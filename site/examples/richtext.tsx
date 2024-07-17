@@ -1,5 +1,6 @@
-import React, { useCallback, useMemo } from 'react'
+import React, { useCallback, useMemo, ComponentProps, useEffect, useRef, useState } from 'react'
 import isHotkey from 'is-hotkey'
+import { slateDiff } from './slate-diff/src';
 import { Editable, withReact, useSlate, Slate } from 'slate-react'
 import {
   Editor,
@@ -7,10 +8,12 @@ import {
   createEditor,
   Descendant,
   Element as SlateElement,
+  withoutNormalizing,
 } from 'slate'
 import { withHistory } from 'slate-history'
 
 import { Button, Icon, Toolbar } from '../components'
+import {Operation} from 'slate';
 
 const HOTKEYS = {
   'mod+b': 'bold',
@@ -26,9 +29,20 @@ const RichTextExample = () => {
   const renderElement = useCallback(props => <Element {...props} />, [])
   const renderLeaf = useCallback(props => <Leaf {...props} />, [])
   const editor = useMemo(() => withHistory(withReact(createEditor())), [])
+  const [value, setValue] = useState(initialValue)
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const clonedValue = JSON.parse(JSON.stringify(value))
+      clonedValue[0].children[0].text = `The time is ${new Date().toLocaleString()}`
+      setValue(clonedValue)
+    }, 100)
+
+    return () => clearInterval(interval)
+  }, [value])
 
   return (
-    <Slate editor={editor} initialValue={initialValue}>
+    <ControlledSlate editor={editor} value={value} onChange={setValue}>
       <Toolbar>
         <MarkButton format="bold" icon="format_bold" />
         <MarkButton format="italic" icon="format_italic" />
@@ -60,9 +74,34 @@ const RichTextExample = () => {
           }
         }}
       />
-    </Slate>
+    </ControlledSlate>
   )
 }
+
+interface ControlledSlateProps extends Omit<ComponentProps<typeof Slate>, 'initialValue'> {
+  value: ComponentProps<typeof Slate>['initialValue']
+}
+
+const ControlledSlate = ({ editor, value, ...props }: ControlledSlateProps) => {
+  const isFirst = useRef(true)
+
+  useEffect(() => {
+    if (isFirst.current) {
+      isFirst.current = false
+      return
+    }
+
+    const operations = slateDiff(editor.children, value) as Operation[]
+
+    if (operations.length === 0) return
+
+    withoutNormalizing(editor as any, () => {
+      operations.forEach((op) => editor.apply(op))
+    })
+  }, [value])
+
+  return <Slate editor={editor} initialValue={value} {...props} />
+};
 
 const toggleBlock = (editor, format) => {
   const isActive = isBlockActive(
@@ -233,6 +272,12 @@ const MarkButton = ({ format, icon }) => {
 }
 
 const initialValue: Descendant[] = [
+  {
+    type: 'paragraph',
+    children: [
+      { text: 'The time is X' },
+    ],
+  },
   {
     type: 'paragraph',
     children: [
