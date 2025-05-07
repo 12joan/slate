@@ -1,54 +1,203 @@
 import { faker } from '@faker-js/faker'
-import React, { useCallback, useMemo } from 'react'
-import { createEditor, Descendant } from 'slate'
+import React, { CSSProperties, Dispatch, useCallback, useEffect, useState } from 'react'
+import { createEditor as slateCreateEditor, Descendant, Editor } from 'slate'
 import { Editable, RenderElementProps, Slate, withReact } from 'slate-react'
 
 import {
-  CustomEditor,
   HeadingElement,
   ParagraphElement,
 } from './custom-types.d'
 
-const HEADINGS = 100
-const PARAGRAPHS = 7
-const initialValue: Descendant[] = []
+interface Config {
+  blocks: number
+  chunking: boolean
+}
 
-for (let h = 0; h < HEADINGS; h++) {
-  const heading: HeadingElement = {
-    type: 'heading-one',
-    children: [{ text: faker.lorem.sentence() }],
-  }
-  initialValue.push(heading)
+const SUPPORTS_EVENT_TIMING = typeof window !== 'undefined' && 'PerformanceEventTiming' in window
 
-  for (let p = 0; p < PARAGRAPHS; p++) {
-    const paragraph: ParagraphElement = {
-      type: 'paragraph',
-      children: [{ text: faker.lorem.paragraph() }],
-    }
-    initialValue.push(paragraph)
+const searchParams = typeof document === 'undefined' ? null : new URLSearchParams(document.location.search);
+
+const initialConfig: Config = {
+  blocks: parseInt(searchParams?.get('blocks') ?? '', 10) || 1000,
+  chunking: searchParams?.get('chunking') === 'true',
+}
+
+const setSearchParams = (config: Config) => {
+  if (searchParams) {
+    searchParams.set('blocks', config.blocks.toString())
+    searchParams.set('chunking', config.chunking ? 'true' : 'false')
+    history.replaceState({}, '', '?' + searchParams.toString())
   }
 }
 
+let cachedInitialValue: Descendant[] = []
+
+const getInitialValue = (blocks: number) => {
+  if (cachedInitialValue.length >= blocks) {
+    return cachedInitialValue.slice(0, blocks)
+  }
+
+  faker.seed(1)
+
+  for (let i = cachedInitialValue.length; i < blocks; i++) {
+    if (i % 100 === 0) {
+      const heading: HeadingElement = {
+        type: 'heading-one',
+        children: [{ text: faker.lorem.sentence() }],
+      }
+      cachedInitialValue.push(heading)
+    } else {
+      const paragraph: ParagraphElement = {
+        type: 'paragraph',
+        children: [{ text: faker.lorem.paragraph() }],
+      }
+      cachedInitialValue.push(paragraph)
+    }
+  }
+
+  return cachedInitialValue
+}
+
+const initialInitialValue = getInitialValue(initialConfig.blocks)
+
+const createEditor = (config: Config) => {
+  const editor = withReact(slateCreateEditor())
+
+  editor.getChunkSize = (node) => config.chunking && Editor.isEditor(node)
+    ? 100
+    : null
+
+  return editor
+}
+
 const HugeDocumentExample = () => {
+  const [rendering, setRendering] = useState(false)
+  const [config, baseSetConfig] = useState<Config>(initialConfig)
+  const [initialValue, setInitialValue] = useState(initialInitialValue)
+  const [editor, setEditor] = useState(() => createEditor(config))
+  const [editorVersion, setEditorVersion] = useState(0)
+
+  const setConfig = useCallback((newConfig: Config) => {
+    setRendering(true)
+    baseSetConfig(newConfig)
+    setSearchParams(newConfig)
+
+    setTimeout(() => {
+      setRendering(false)
+      setInitialValue(getInitialValue(newConfig.blocks))
+      setEditor(createEditor(newConfig))
+      setEditorVersion((n) => n + 1)
+    })
+  }, [])
+
   const renderElement = useCallback(
     (props: RenderElementProps) => <Element {...props} />,
     []
   )
-  const editor = useMemo(() => withReact(createEditor()) as CustomEditor, [])
+
   return (
-    <Slate editor={editor} initialValue={initialValue}>
-      <Editable renderElement={renderElement} spellCheck autoFocus />
-    </Slate>
+    <>
+      <DebugUI config={config} setConfig={setConfig} />
+
+      {rendering
+        ? <div>Rendering&hellip;</div>
+        : (
+          <Slate key={editorVersion} editor={editor} initialValue={initialValue}>
+            <Editable renderElement={renderElement} spellCheck autoFocus />
+          </Slate>
+        )
+      }
+    </>
   )
 }
+
+const elementStyle: CSSProperties = { contentVisibility: 'auto' }
 
 const Element = ({ attributes, children, element }: RenderElementProps) => {
   switch (element.type) {
     case 'heading-one':
-      return <h1 {...attributes}>{children}</h1>
+      return <h1 {...attributes} style={elementStyle}>{children}</h1>
     default:
-      return <p {...attributes}>{children}</p>
+      return <p {...attributes} style={elementStyle}>{children}</p>
   }
+}
+
+const DebugUI = ({
+  config,
+  setConfig,
+}: {
+  config: Config
+  setConfig: Dispatch<Config>
+}) => {
+  const [keyPressDurations, setKeyPressDurations] = useState<number[]>([])
+  const last = keyPressDurations[0] ?? null
+  const average = keyPressDurations.length === 10
+    ? Math.round(keyPressDurations.reduce((total, d) => total + d) / 10)
+    : null
+
+  useEffect(() => {
+    if (!SUPPORTS_EVENT_TIMING) return
+
+    const observer = new PerformanceObserver((list) => {
+      list.getEntries().forEach((entry) => {
+        if (entry.name === 'keypress') {
+          const duration = entry.processingEnd - entry.processingStart
+          setKeyPressDurations((durations) => [duration, ...durations.slice(0, 9)])
+        }
+      })
+    })
+
+    // Register the observer for events
+    observer.observe({ type: "event", durationThreshold: 16 })
+
+    return () => observer.disconnect()
+  }, [])
+
+  return (
+    <div className="debug-ui">
+      <p><label>
+        Blocks:{' '}
+        <select
+          value={config.blocks}
+          onChange={(event) => setConfig({
+            ...config,
+            blocks: parseInt(event.target.value, 10),
+          })}
+        >
+          <option value={1000}>1000</option>
+          <option value={2500}>2500</option>
+          <option value={5000}>5000</option>
+          <option value={7500}>7500</option>
+          <option value={10000}>10000</option>
+          <option value={15000}>15000</option>
+          <option value={20000}>20000</option>
+          <option value={25000}>25000</option>
+          <option value={30000}>30000</option>
+          <option value={40000}>40000</option>
+          <option value={50000}>50000</option>
+          <option value={100000}>100000</option>
+        </select>
+      </label></p>
+
+      <p><label>
+        <input
+          type="checkbox"
+          checked={config.chunking}
+          onChange={(event) => setConfig({
+            ...config,
+            chunking: event.target.checked,
+          })}
+        />
+        Chunking enabled
+      </label></p>
+
+      <p>Last keypress (ms): {SUPPORTS_EVENT_TIMING ? last ?? '-': 'Not supported' }</p>
+
+      <p>Average of last 10 keypresses (ms): {SUPPORTS_EVENT_TIMING ? average ?? '-' : 'Not supported' }</p>
+
+      {SUPPORTS_EVENT_TIMING && last === null && <p>Events shorter than 16ms may not be detected.</p>}
+    </div>
+  )
 }
 
 export default HugeDocumentExample

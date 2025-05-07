@@ -36,7 +36,10 @@ const childEntriesToLeaves = (entries: ChildEntry[]): ChunkLeaf[] => entries.map
 
 const NODE_TO_CHUNK_TREE = new WeakMap<Ancestor, ChunkTree>()
 
-export const getChunkTreeForNode = (editor: Editor, node: Ancestor, reconcile: boolean) => {
+export const getChunkTreeForNode = (editor: Editor, node: Ancestor, options: {
+  reconcile: boolean
+  chunkSize: number
+}) => {
   let chunkTree = NODE_TO_CHUNK_TREE.get(node)
 
   if (!chunkTree) {
@@ -50,9 +53,9 @@ export const getChunkTreeForNode = (editor: Editor, node: Ancestor, reconcile: b
     NODE_TO_CHUNK_TREE.set(node, chunkTree)
   }
 
-  if (reconcile) {
+  if (options.reconcile) {
     chunkTree.modifiedChunks.clear()
-    const manager = new ChunkTreeManager(editor, chunkTree)
+    const manager = new ChunkTreeManager(editor, chunkTree, options.chunkSize)
     manager.reconcile(node.children as Element[])
     chunkTree.movedNodeKeys.clear()
   }
@@ -63,6 +66,7 @@ export const getChunkTreeForNode = (editor: Editor, node: Ancestor, reconcile: b
 class ChunkTreeManager {
   private editor: Editor
   private root: ChunkTree
+  private chunkSize: number
   private reachedEnd: boolean
   // These refer to the node in the chunk tree currently being processed
   private pointerChunk: ChunkAncestor
@@ -70,9 +74,10 @@ class ChunkTreeManager {
   private pointerIndexStack: number[]
   private cachedPointerNode: ChunkDescendant | null | undefined
 
-  constructor(editor: Editor, chunkTree: ChunkTree) {
+  constructor(editor: Editor, chunkTree: ChunkTree, chunkSize: number) {
     this.editor = editor
     this.root = chunkTree
+    this.chunkSize = chunkSize
     this.pointerChunk = chunkTree
     this.pointerIndex = -1
     this.pointerIndexStack = []
@@ -246,15 +251,13 @@ class ChunkTreeManager {
    * Insert nodes at the end of the chunk tree, leaving the pointer unchanged
    */
   private append(entries: ChildEntry[]) {
-    const chunkSize = 100
-
     const toChunks = (leaves: ChunkLeaf[], parent: ChunkAncestor): ChunkDescendant[] => {
-      if (leaves.length <= chunkSize) return leaves
+      if (leaves.length <= this.chunkSize) return leaves
 
       const chunks: Chunk[] = []
-      const perChunk = Math.ceil(leaves.length / chunkSize)
+      const perChunk = Math.ceil(leaves.length / this.chunkSize)
 
-      for (let i = 0; i < chunkSize; i++) {
+      for (let i = 0; i < this.chunkSize; i++) {
         const chunkNodes = leaves.slice(i * perChunk, (i + 1) * perChunk)
 
         if (chunkNodes.length > 0) {

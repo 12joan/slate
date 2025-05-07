@@ -33,10 +33,10 @@ import {Chunk, ChunkAncestor, ChunkTree, getChunkTreeForNode} from '../component
 const jsxCache = new WeakMap<Descendant, JSX.Element>()
 
 const cacheJSX = (node: Descendant, render: () => JSX.Element): JSX.Element => {
-  const cached = jsxCache.get(node)
-  if (cached) return cached
+  // const cached = jsxCache.get(node)
+  // if (cached) return cached
   const jsx = render()
-  jsxCache.set(node, jsx)
+  // jsxCache.set(node, jsx)
   return jsx
 }
 
@@ -104,7 +104,9 @@ const useChildren = (props: {
     )
   }
 
-  if (isLeafBlock) {
+  const chunkSize = isLeafBlock ? null : editor.getChunkSize(node)
+
+  if (!chunkSize) {
     return node.children.map((n, i) => Text.isText(n) ? renderTextComponent(n, i) : renderElementComponent(n))
   }
 
@@ -122,7 +124,7 @@ const useChildren = (props: {
   //   }
   // }
 
-  const chunkTree = getChunkTreeForNode(editor, node, true)
+  const chunkTree = getChunkTreeForNode(editor, node, { reconcile: true, chunkSize })
 
   return <ChunkTree root={chunkTree} chunk={chunkTree} renderElement={renderElementComponent} />
 }

@@ -22,6 +22,8 @@ export const withReact = <T extends BaseEditor>(
 
   const { onChange } = e
 
+  e.getChunkSize = () => null
+
   e.onChange = options => {
     // COMPAT: React < 18 doesn't batch `setState` hook calls, which means
     // that the children and selection can get out of sync for one render
