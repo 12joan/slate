@@ -38,7 +38,6 @@ const Element = (props: {
   renderPlaceholder: (props: RenderPlaceholderProps) => JSX.Element
   renderText?: (props: RenderTextProps) => JSX.Element
   renderLeaf?: (props: RenderLeafProps) => JSX.Element
-  selection: Range | null
 }) => {
   const {
     decorations,
@@ -47,7 +46,6 @@ const Element = (props: {
     renderPlaceholder,
     renderLeaf,
     renderText,
-    selection,
   } = props
   const editor = useSlateStatic()
   const readOnly = useReadOnly()
@@ -75,7 +73,6 @@ const Element = (props: {
     renderPlaceholder,
     renderLeaf,
     renderText,
-    selection,
   })
 
   // Attributes that the developer must mix into the element in their
@@ -152,11 +149,7 @@ const MemoizedElement = React.memo(Element, (prev, next) => {
     prev.renderText === next.renderText &&
     prev.renderLeaf === next.renderLeaf &&
     prev.renderPlaceholder === next.renderPlaceholder &&
-    isElementDecorationsEqual(prev.decorations, next.decorations) &&
-    (prev.selection === next.selection ||
-      (!!prev.selection &&
-        !!next.selection &&
-        Range.equals(prev.selection, next.selection)))
+    isElementDecorationsEqual(prev.decorations, next.decorations)
   )
 })
 

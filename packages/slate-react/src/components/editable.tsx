@@ -1855,7 +1855,6 @@ export const Editable = forwardRef(
                   renderPlaceholder={renderPlaceholder}
                   renderLeaf={renderLeaf}
                   renderText={renderText}
-                  selection={editor.selection}
                 />
               </Component>
             </RestoreDOM>

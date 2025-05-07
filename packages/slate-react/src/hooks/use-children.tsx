@@ -1,4 +1,4 @@
-import React from 'react'
+import React, {useCallback} from 'react'
 import {
   Ancestor,
   Descendant,
@@ -6,7 +6,9 @@ import {
   Element,
   Range,
   DecoratedRange,
+  Text,
 } from 'slate'
+import { Key } from 'slate-dom'
 import {
   RenderElementProps,
   RenderLeafProps,
@@ -21,10 +23,22 @@ import { IS_NODE_MAP_DIRTY, NODE_TO_INDEX, NODE_TO_PARENT } from 'slate-dom'
 import { useDecorate } from './use-decorate'
 import { SelectedContext } from './use-selected'
 import { useSlateStatic } from './use-slate-static'
+import ChunkedChildren from '../components/chunking/chunked-children'
+import {Chunk, ChunkAncestor, ChunkTree, getChunkTreeForNode} from '../components/chunking/chunk-tree'
 
 /**
  * Children.
  */
+
+const jsxCache = new WeakMap<Descendant, JSX.Element>()
+
+const cacheJSX = (node: Descendant, render: () => JSX.Element): JSX.Element => {
+  const cached = jsxCache.get(node)
+  if (cached) return cached
+  const jsx = render()
+  jsxCache.set(node, jsx)
+  return jsx
+}
 
 const useChildren = (props: {
   decorations: DecoratedRange[]
@@ -33,7 +47,6 @@ const useChildren = (props: {
   renderPlaceholder: (props: RenderPlaceholderProps) => JSX.Element
   renderText?: (props: RenderTextProps) => JSX.Element
   renderLeaf?: (props: RenderLeafProps) => JSX.Element
-  selection: Range | null
 }) => {
   const {
     decorations,
@@ -42,69 +55,102 @@ const useChildren = (props: {
     renderPlaceholder,
     renderText,
     renderLeaf,
-    selection,
   } = props
-  const decorate = useDecorate()
+  // const decorate = useDecorate()
   const editor = useSlateStatic()
   IS_NODE_MAP_DIRTY.set(editor as ReactEditor, false)
-  const path = ReactEditor.findPath(editor, node)
-  const children = []
-  const isLeafBlock =
-    Element.isElement(node) &&
-    !editor.isInline(node) &&
-    Editor.hasInlines(editor, node)
+  // const path = ReactEditor.findPath(editor, node)
+  const isEditor = Editor.isEditor(node)
+  const isBlock = !isEditor && Element.isElement(node) && !editor.isInline(node)
+  const isLeafBlock = isBlock && Editor.hasInlines(editor, node)
 
-  for (let i = 0; i < node.children.length; i++) {
-    const p = path.concat(i)
-    const n = node.children[i] as Descendant
-    const key = ReactEditor.findKey(editor, n)
-    const range = Editor.range(editor, p)
-    const sel = selection && Range.intersection(range, selection)
-    const ds = decorate([n, p])
+  node.children.forEach((n, i) => {
+    NODE_TO_INDEX.set(n, i)
+    NODE_TO_PARENT.set(n, node)
+  })
 
-    for (const dec of decorations) {
-      const d = Range.intersection(dec, range)
+  const renderElementComponent = useCallback((n: Element, cachedKey?: Key) => cacheJSX(n, () => {
+    const key = cachedKey ?? ReactEditor.findKey(editor, n)
 
-      if (d) {
-        ds.push(d)
-      }
-    }
-
-    if (Element.isElement(n)) {
-      children.push(
-        <SelectedContext.Provider key={`provider-${key.id}`} value={!!sel}>
-          <ElementComponent
-            decorations={ds}
-            element={n}
-            key={key.id}
-            renderElement={renderElement}
-            renderPlaceholder={renderPlaceholder}
-            renderLeaf={renderLeaf}
-            renderText={renderText}
-            selection={sel}
-          />
-        </SelectedContext.Provider>
-      )
-    } else {
-      children.push(
-        <TextComponent
-          decorations={ds}
+    return (
+      <SelectedContext.Provider key={`provider-${key.id}`} value={false}>
+        <ElementComponent
+          decorations={[]}
+          element={n}
           key={key.id}
-          isLast={isLeafBlock && i === node.children.length - 1}
-          parent={node}
+          renderElement={renderElement}
           renderPlaceholder={renderPlaceholder}
           renderLeaf={renderLeaf}
           renderText={renderText}
-          text={n}
         />
-      )
-    }
+      </SelectedContext.Provider>
+    )
+  }), [editor, renderElement, renderPlaceholder, renderLeaf, renderText])
 
-    NODE_TO_INDEX.set(n, i)
-    NODE_TO_PARENT.set(n, node)
+  const renderTextComponent = (n: Text, i: number) => {
+    const key = ReactEditor.findKey(editor, n)
+
+    return (
+      <TextComponent
+        decorations={[]}
+        key={key.id}
+        isLast={i === node.children.length - 1}
+        parent={node}
+        renderPlaceholder={renderPlaceholder}
+        renderLeaf={renderLeaf}
+        renderText={renderText}
+        text={n}
+      />
+    )
   }
 
-  return children
+  if (isLeafBlock) {
+    return node.children.map((n, i) => Text.isText(n) ? renderTextComponent(n, i) : renderElementComponent(n))
+  }
+
+  // const p = path.concat(i)
+  // const key = cachedKey ?? ReactEditor.findKey(editor, n)
+  // const range = Editor.range(editor, p)
+  // const sel = selection && Range.intersection(range, selection)
+  // const ds = decorate([n, p])
+
+  // for (const dec of decorations) {
+  //   const d = Range.intersection(dec, range)
+
+  //   if (d) {
+  //     ds.push(d)
+  //   }
+  // }
+
+  const chunkTree = getChunkTreeForNode(editor, node, true)
+
+  return <ChunkTree root={chunkTree} chunk={chunkTree} renderElement={renderElementComponent} />
 }
+
+const ChunkAncestor = <C extends ChunkAncestor>(props: {
+  root: ChunkTree
+  chunk: C
+  renderElement: (node: Element, key: Key) => JSX.Element
+}) => {
+  const { root, chunk, renderElement } = props
+
+  return chunk.children.map((chunkNode) => chunkNode.type === 'chunk'
+    ? <MemoizedChunk
+        key={chunkNode.key.id}
+        root={root}
+        chunk={chunkNode}
+        renderElement={renderElement}
+      />
+    : renderElement(chunkNode.node, chunkNode.key)
+  )
+}
+
+const ChunkTree = ChunkAncestor<ChunkTree>
+
+const MemoizedChunk = React.memo(ChunkAncestor<Chunk>, (prev, next) =>
+  prev.root === next.root &&
+  prev.renderElement === next.renderElement &&
+  !next.root.modifiedChunks.has(next.chunk)
+)
 
 export default useChildren
