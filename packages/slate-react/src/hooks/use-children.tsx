@@ -137,7 +137,7 @@ const ChunkAncestor = <C extends ChunkAncestor>(props: {
   const { root, chunk, renderElement } = props
 
   return chunk.children.map((chunkNode) => chunkNode.type === 'chunk'
-  ? <div key={chunkNode.key.id} style={{ contentVisibility: 'auto' }}><MemoizedChunk
+  ? <div key={chunkNode.key.id} style={chunkNode.children.some((c) => c.type === 'leaf') ? { contentVisibility: 'auto' } : {}}><MemoizedChunk
 
         root={root}
         chunk={chunkNode}

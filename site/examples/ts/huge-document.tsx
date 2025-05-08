@@ -59,13 +59,16 @@ const getInitialValue = (blocks: number) => {
   return cachedInitialValue.slice()
 }
 
-const initialInitialValue = getInitialValue(initialConfig.blocks)
+// Avoid DoS'ing the site's server
+const initialInitialValue = typeof window === 'undefined'
+  ? []
+  : getInitialValue(initialConfig.blocks)
 
 const createEditor = (config: Config) => {
   const editor = withReact(slateCreateEditor())
 
   editor.getChunkSize = (node) => config.chunking && Editor.isEditor(node)
-    ? 100
+    ? 1000
     : null
 
   return editor
@@ -207,6 +210,10 @@ const DebugUI = ({
           <option value={40000}>40000</option>
           <option value={50000}>50000</option>
           <option value={100000}>100000</option>
+          <option value={200000}>200000</option>
+          <option value={300000}>300000</option>
+          <option value={400000}>400000</option>
+          <option value={500000}>500000</option>
         </select>
       </label></p>
 

@@ -180,7 +180,7 @@ export const Editable = forwardRef(
       disableDefaultStyles = false,
       ...attributes
     } = props
-    const editor = useSlateSelector((editor) => ({ editor })).editor
+    const editor = useSlate()
     // Rerender editor when composition status changed
     const [isComposing, setIsComposing] = useState(false)
     const ref = useRef<HTMLDivElement | null>(null)

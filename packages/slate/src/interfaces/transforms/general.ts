@@ -149,7 +149,7 @@ const applyToDraft = (editor: Editor, op: Operation) => {
         return [
           ...children.slice(0, prevIndex),
           newNode,
-          ...children.slice(index)
+          ...children.slice(index + 1)
         ]
       })
 
@@ -202,51 +202,52 @@ const applyToDraft = (editor: Editor, op: Operation) => {
         ...children.slice(index + 1),
       ])
 
-      // TODO!!!!!!!!!
       // Transform all the points in the value, but if the point was in the
       // node that was removed we need to update the range or remove it.
-      // if (selection) {
-      //   for (const [point, key] of Range.points(selection)) {
-      //     const result = Point.transform(point, op)
+      if (editor.selection) {
+        let selection: Selection = { ...editor.selection }
 
-      //     if (selection != null && result != null) {
-      //       selection[key] = result
-      //     } else {
-      //       let prev: NodeEntry<Text> | undefined
-      //       let next: NodeEntry<Text> | undefined
+        for (const [point, key] of Range.points(selection)) {
+          const result = Point.transform(point, op)
 
-      //       for (const [n, p] of Node.texts(editor)) {
-      //         if (Path.compare(p, path) === -1) {
-      //           prev = [n, p]
-      //         } else {
-      //           next = [n, p]
-      //           break
-      //         }
-      //       }
+          if (selection != null && result != null) {
+            selection[key] = result
+          } else {
+            let prev: NodeEntry<Text> | undefined
+            let next: NodeEntry<Text> | undefined
 
-      //       let preferNext = false
-      //       if (prev && next) {
-      //         if (Path.equals(next[1], path)) {
-      //           preferNext = !Path.hasPrevious(next[1])
-      //         } else {
-      //           preferNext =
-      //             Path.common(prev[1], path).length <
-      //             Path.common(next[1], path).length
-      //         }
-      //       }
+            for (const [n, p] of Node.texts(editor)) {
+              if (Path.compare(p, path) === -1) {
+                prev = [n, p]
+              } else {
+                next = [n, p]
+                break
+              }
+            }
 
-      //       if (prev && !preferNext) {
-      //         point.path = prev[1]
-      //         point.offset = prev[0].text.length
-      //       } else if (next) {
-      //         point.path = next[1]
-      //         point.offset = 0
-      //       } else {
-      //         selection = null
-      //       }
-      //     }
-      //   }
-      // }
+            let preferNext = false
+            if (prev && next) {
+              if (Path.equals(next[1], path)) {
+                preferNext = !Path.hasPrevious(next[1])
+              } else {
+                preferNext =
+                  Path.common(prev[1], path).length <
+                  Path.common(next[1], path).length
+              }
+            }
+
+            if (prev && !preferNext) {
+              selection![key] = { path: prev[1], offset: prev[0].text.length }
+            } else if (next) {
+              selection![key] = { path: next[1], offset: 0 }
+            } else {
+              selection = null
+            }
+          }
+        }
+
+        editor.selection = selection
+      }
 
       break
     }
@@ -361,29 +362,36 @@ const applyToDraft = (editor: Editor, op: Operation) => {
       modifyChildren(editor, Path.parent(path), (children) => {
         const node = children[index]
         let newNode: Descendant
+        let nextNode: Descendant
 
         if (Text.isText(node)) {
           const before = node.text.slice(0, position)
           const after = node.text.slice(position)
-          node.text = before
           newNode = {
+            ...node,
+            text: before
+          }
+          nextNode = {
             ...(properties as Partial<Text>),
             text: after,
           }
         } else {
           const before = node.children.slice(0, position)
           const after = node.children.slice(position)
-          node.children = before
-
           newNode = {
+            ...node,
+            children: before,
+          }
+          nextNode = {
             ...(properties as Partial<Element>),
             children: after,
           }
         }
 
         return [
-          ...children.slice(0, index + 1),
+          ...children.slice(0, index),
           newNode,
+          nextNode,
           ...children.slice(index + 1),
         ]
       })
