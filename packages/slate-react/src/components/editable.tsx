@@ -77,7 +77,7 @@ import {
 import { RestoreDOM } from './restore-dom/restore-dom'
 import { AndroidInputManager } from '../hooks/android-input-manager/android-input-manager'
 import { ComposingContext } from '../hooks/use-composing'
-import {useSlateSelector} from '../hooks/use-slate-selector'
+import { useSlateSelector } from '../hooks/use-slate-selector'
 
 type DeferredOperation = () => void
 

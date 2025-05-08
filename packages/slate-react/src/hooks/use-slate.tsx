@@ -1,7 +1,7 @@
 import { createContext, useContext } from 'react'
 import { Editor } from 'slate'
 import { ReactEditor } from '../plugin/react-editor'
-import {useSlateSelector} from './use-slate-selector'
+import { useSlateSelector } from './use-slate-selector'
 
 /**
  * A React context for sharing the editor object, in a way that re-renders the
@@ -23,7 +23,7 @@ export const SlateContext = createContext<{
  */
 
 export const useSlate = (): Editor => {
-  return useSlateSelector((editor) => ({ editor })).editor
+  return useSlateSelector(editor => ({ editor })).editor
   // const context = useContext(SlateContext)
 
   // if (!context) {

@@ -1,5 +1,5 @@
-import {Ancestor, Element, Editor} from "slate"
-import {ReactEditor} from "../../plugin/react-editor"
+import { Ancestor, Element, Editor } from 'slate'
+import { ReactEditor } from '../../plugin/react-editor'
 import { Key } from 'slate-dom'
 
 export interface ChunkTree {
@@ -28,18 +28,23 @@ export type ChunkNode = ChunkTree | Chunk | ChunkLeaf
 
 type ChildEntry = [Element, Key]
 
-const childEntriesToLeaves = (entries: ChildEntry[]): ChunkLeaf[] => entries.map(([node, key]) => ({
-  type: 'leaf',
-  key,
-  node,
-}))
+const childEntriesToLeaves = (entries: ChildEntry[]): ChunkLeaf[] =>
+  entries.map(([node, key]) => ({
+    type: 'leaf',
+    key,
+    node,
+  }))
 
 const NODE_TO_CHUNK_TREE = new WeakMap<Ancestor, ChunkTree>()
 
-export const getChunkTreeForNode = (editor: Editor, node: Ancestor, options: {
-  reconcile: boolean
-  chunkSize: number
-}) => {
+export const getChunkTreeForNode = (
+  editor: Editor,
+  node: Ancestor,
+  options: {
+    reconcile: boolean
+    chunkSize: number
+  }
+) => {
   let chunkTree = NODE_TO_CHUNK_TREE.get(node)
 
   if (!chunkTree) {
@@ -96,7 +101,10 @@ class ChunkTreeManager {
       return key
     }
 
-    const getChildEntries = (nodes: Element[], startIndex: number): ChildEntry[] =>
+    const getChildEntries = (
+      nodes: Element[],
+      startIndex: number
+    ): ChildEntry[] =>
       nodes.map((node, i) => [node, getChildKey(node, startIndex + i)])
 
     let childrenPointerIndex = 0
@@ -106,7 +114,10 @@ class ChunkTreeManager {
         return [children[childrenPointerIndex++]]
       }
 
-      const slicedChildren = children.slice(childrenPointerIndex, childrenPointerIndex + n)
+      const slicedChildren = children.slice(
+        childrenPointerIndex,
+        childrenPointerIndex + n
+      )
       childrenPointerIndex += n
       return slicedChildren
     }
@@ -126,7 +137,7 @@ class ChunkTreeManager {
 
     // Scan nodes in the chunk tree
     let treeNode: ChunkLeaf | null
-    while (treeNode = this.readLeaf()) {
+    while ((treeNode = this.readLeaf())) {
       // Check where the tree node appears in the children array. Nodes are
       // removed from the chunk tree on move_node, so the only way for lookAhead
       // to be greater than 0 is if nodes have been inserted in the children
@@ -146,7 +157,10 @@ class ChunkTreeManager {
       const matchingChildNode = insertedChildren.pop()!
 
       if (insertedChildren.length) {
-        const insertedEntries = getChildEntries(insertedChildren, childrenPointerIndex)
+        const insertedEntries = getChildEntries(
+          insertedChildren,
+          childrenPointerIndex
+        )
         this.insertBefore(insertedEntries)
       }
 
@@ -159,7 +173,10 @@ class ChunkTreeManager {
 
     if (childrenPointerIndex < children.length) {
       const remainingChildren = children.slice(childrenPointerIndex)
-      const remainingEntries = getChildEntries(remainingChildren, childrenPointerIndex)
+      const remainingEntries = getChildEntries(
+        remainingChildren,
+        childrenPointerIndex
+      )
       this.append(remainingEntries)
     }
   }
@@ -183,7 +200,7 @@ class ChunkTreeManager {
 
   private enterChunk() {
     if (this.pointerNode?.type !== 'chunk') {
-      throw new Error('Cannot enter non-chunk');
+      throw new Error('Cannot enter non-chunk')
     }
 
     this.pointerIndexStack.push(this.pointerIndex)
@@ -201,7 +218,7 @@ class ChunkTreeManager {
    */
   private exitChunk() {
     if (this.pointerChunk.type === 'root') {
-      throw new Error('Cannot exit root');
+      throw new Error('Cannot exit root')
     }
 
     const previousPointerChunk = this.pointerChunk
@@ -217,7 +234,10 @@ class ChunkTreeManager {
   private remove() {
     this.pointerSiblings.splice(this.pointerIndex--, 1)
 
-    if (this.pointerSiblings.length === 0 && this.pointerChunk.type === 'chunk') {
+    if (
+      this.pointerSiblings.length === 0 &&
+      this.pointerChunk.type === 'chunk'
+    ) {
       this.exitChunk()
       this.remove()
     } else {
@@ -251,7 +271,10 @@ class ChunkTreeManager {
    * Insert nodes at the end of the chunk tree, leaving the pointer unchanged
    */
   private append(entries: ChildEntry[]) {
-    const toChunks = (leaves: ChunkLeaf[], parent: ChunkAncestor): ChunkDescendant[] => {
+    const toChunks = (
+      leaves: ChunkLeaf[],
+      parent: ChunkAncestor
+    ): ChunkDescendant[] => {
       if (leaves.length <= this.chunkSize) return leaves
 
       const chunks: Chunk[] = []
@@ -276,7 +299,9 @@ class ChunkTreeManager {
       return chunks
     }
 
-    this.root.children.push(...toChunks(childEntriesToLeaves(entries), this.root))
+    this.root.children.push(
+      ...toChunks(childEntriesToLeaves(entries), this.root)
+    )
   }
 
   /**

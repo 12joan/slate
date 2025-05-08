@@ -117,13 +117,13 @@ export const Slate = (props: {
 
   return (
     <SlateSelectorContext.Provider value={selectorContext}>
-      {/*<SlateContext.Provider value={context}>*/}
-        <EditorContext.Provider value={context.editor}>
-          <FocusedContext.Provider value={isFocused}>
-            {children}
-          </FocusedContext.Provider>
-        </EditorContext.Provider>
-      {/*</SlateContext.Provider>*/}
+      {/* <SlateContext.Provider value={context}>*/}
+      <EditorContext.Provider value={context.editor}>
+        <FocusedContext.Provider value={isFocused}>
+          {children}
+        </FocusedContext.Provider>
+      </EditorContext.Provider>
+      {/* </SlateContext.Provider>*/}
     </SlateSelectorContext.Provider>
   )
 }

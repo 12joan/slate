@@ -1,22 +1,31 @@
 import { faker } from '@faker-js/faker'
-import React, { CSSProperties, Dispatch, useCallback, useEffect, useState } from 'react'
+import React, {
+  CSSProperties,
+  Dispatch,
+  useCallback,
+  useEffect,
+  useState,
+} from 'react'
 import { createEditor as slateCreateEditor, Descendant, Editor } from 'slate'
 import { Editable, RenderElementProps, Slate, withReact } from 'slate-react'
 
-import {
-  HeadingElement,
-  ParagraphElement,
-} from './custom-types.d'
+import { HeadingElement, ParagraphElement } from './custom-types.d'
 
 interface Config {
   blocks: number
   chunking: boolean
 }
 
-const SUPPORTS_EVENT_TIMING = typeof window !== 'undefined' && 'PerformanceEventTiming' in window
-const SUPPORTS_LOAF_TIMING = typeof window !== 'undefined' && 'PerformanceLongAnimationFrameTiming' in window
+const SUPPORTS_EVENT_TIMING =
+  typeof window !== 'undefined' && 'PerformanceEventTiming' in window
+const SUPPORTS_LOAF_TIMING =
+  typeof window !== 'undefined' &&
+  'PerformanceLongAnimationFrameTiming' in window
 
-const searchParams = typeof document === 'undefined' ? null : new URLSearchParams(document.location.search);
+const searchParams =
+  typeof document === 'undefined'
+    ? null
+    : new URLSearchParams(document.location.search)
 
 const initialConfig: Config = {
   blocks: parseInt(searchParams?.get('blocks') ?? '', 10) || 1000,
@@ -27,7 +36,7 @@ const setSearchParams = (config: Config) => {
   if (searchParams) {
     searchParams.set('blocks', config.blocks.toString())
     searchParams.set('chunking', config.chunking ? 'true' : 'false')
-    history.replaceState({}, '', '?' + searchParams.toString())
+    history.replaceState({}, '', `?${searchParams.toString()}`)
   }
 }
 
@@ -60,16 +69,14 @@ const getInitialValue = (blocks: number) => {
 }
 
 // Avoid DoS'ing the site's server
-const initialInitialValue = typeof window === 'undefined'
-  ? []
-  : getInitialValue(initialConfig.blocks)
+const initialInitialValue =
+  typeof window === 'undefined' ? [] : getInitialValue(initialConfig.blocks)
 
 const createEditor = (config: Config) => {
   const editor = withReact(slateCreateEditor())
 
-  editor.getChunkSize = (node) => config.chunking && Editor.isEditor(node)
-    ? 1000
-    : null
+  editor.getChunkSize = node =>
+    config.chunking && Editor.isEditor(node) ? 1000 : null
 
   return editor
 }
@@ -90,7 +97,7 @@ const HugeDocumentExample = () => {
       setRendering(false)
       setInitialValue(getInitialValue(newConfig.blocks))
       setEditor(createEditor(newConfig))
-      setEditorVersion((n) => n + 1)
+      setEditorVersion(n => n + 1)
     })
   }, [])
 
@@ -103,14 +110,13 @@ const HugeDocumentExample = () => {
     <>
       <DebugUI editor={editor} config={config} setConfig={setConfig} />
 
-      {rendering
-        ? <div>Rendering&hellip;</div>
-        : (
-          <Slate key={editorVersion} editor={editor} initialValue={initialValue}>
-            <Editable renderElement={renderElement} spellCheck autoFocus />
-          </Slate>
-        )
-      }
+      {rendering ? (
+        <div>Rendering&hellip;</div>
+      ) : (
+        <Slate key={editorVersion} editor={editor} initialValue={initialValue}>
+          <Editable renderElement={renderElement} spellCheck autoFocus />
+        </Slate>
+      )}
     </>
   )
 }
@@ -134,29 +140,36 @@ const DebugUI = ({
   setConfig: Dispatch<Config>
 }) => {
   const [keyPressDurations, setKeyPressDurations] = useState<number[]>([])
-  const [lastLongAnimationFrameDuration, setLastLongAnimationFrameDuration] = useState<number | null>(null)
+  const [lastLongAnimationFrameDuration, setLastLongAnimationFrameDuration] =
+    useState<number | null>(null)
 
   const lastKeyPressDuration: number | null = keyPressDurations[0] ?? null
 
-  const averageKeyPressDuration = keyPressDurations.length === 10
-    ? Math.round(keyPressDurations.reduce((total, d) => total + d) / 10)
-    : null
+  const averageKeyPressDuration =
+    keyPressDurations.length === 10
+      ? Math.round(keyPressDurations.reduce((total, d) => total + d) / 10)
+      : null
 
   useEffect(() => {
     if (!SUPPORTS_EVENT_TIMING) return
 
-    const observer = new PerformanceObserver((list) => {
-      list.getEntries().forEach((entry) => {
+    const observer = new PerformanceObserver(list => {
+      list.getEntries().forEach(entry => {
         if (entry.name === 'keypress') {
           // @ts-ignore Entry type is missing processingStart and processingEnd
-          const duration = Math.round(entry.processingEnd - entry.processingStart)
-          setKeyPressDurations((durations) => [duration, ...durations.slice(0, 9)])
+          const duration = Math.round(
+            entry.processingEnd - entry.processingStart
+          )
+          setKeyPressDurations(durations => [
+            duration,
+            ...durations.slice(0, 9),
+          ])
         }
       })
     })
 
     // @ts-ignore Options type is missing durationThreshold
-    observer.observe({ type: "event", durationThreshold: 16 })
+    observer.observe({ type: 'event', durationThreshold: 16 })
 
     return () => observer.disconnect()
   }, [])
@@ -167,13 +180,13 @@ const DebugUI = ({
     const { apply } = editor
     let afterOperation = false
 
-    editor.apply = (operation) => {
+    editor.apply = operation => {
       apply(operation)
       afterOperation = true
     }
 
-    const observer = new PerformanceObserver((list) => {
-      list.getEntries().forEach((entry) => {
+    const observer = new PerformanceObserver(list => {
+      list.getEntries().forEach(entry => {
         if (afterOperation) {
           setLastLongAnimationFrameDuration(Math.round(entry.duration))
           afterOperation = false
@@ -182,60 +195,83 @@ const DebugUI = ({
     })
 
     // Register the observer for events
-    observer.observe({ type: "long-animation-frame" })
+    observer.observe({ type: 'long-animation-frame' })
 
     return () => observer.disconnect()
   }, [editor])
 
   return (
     <div className="debug-ui">
-      <p><label>
-        Blocks:{' '}
-        <select
-          value={config.blocks}
-          onChange={(event) => setConfig({
-            ...config,
-            blocks: parseInt(event.target.value, 10),
-          })}
-        >
-          <option value={1000}>1000</option>
-          <option value={2500}>2500</option>
-          <option value={5000}>5000</option>
-          <option value={7500}>7500</option>
-          <option value={10000}>10000</option>
-          <option value={15000}>15000</option>
-          <option value={20000}>20000</option>
-          <option value={25000}>25000</option>
-          <option value={30000}>30000</option>
-          <option value={40000}>40000</option>
-          <option value={50000}>50000</option>
-          <option value={100000}>100000</option>
-          <option value={200000}>200000</option>
-          <option value={300000}>300000</option>
-          <option value={400000}>400000</option>
-          <option value={500000}>500000</option>
-        </select>
-      </label></p>
+      <p>
+        <label>
+          Blocks:{' '}
+          <select
+            value={config.blocks}
+            onChange={event =>
+              setConfig({
+                ...config,
+                blocks: parseInt(event.target.value, 10),
+              })
+            }
+          >
+            <option value={1000}>1000</option>
+            <option value={2500}>2500</option>
+            <option value={5000}>5000</option>
+            <option value={7500}>7500</option>
+            <option value={10000}>10000</option>
+            <option value={15000}>15000</option>
+            <option value={20000}>20000</option>
+            <option value={25000}>25000</option>
+            <option value={30000}>30000</option>
+            <option value={40000}>40000</option>
+            <option value={50000}>50000</option>
+            <option value={100000}>100000</option>
+            <option value={200000}>200000</option>
+            <option value={300000}>300000</option>
+            <option value={400000}>400000</option>
+            <option value={500000}>500000</option>
+          </select>
+        </label>
+      </p>
 
-      <p><label>
-        <input
-          type="checkbox"
-          checked={config.chunking}
-          onChange={(event) => setConfig({
-            ...config,
-            chunking: event.target.checked,
-          })}
-        />{' '}
-        Chunking enabled
-      </label></p>
+      <p>
+        <label>
+          <input
+            type="checkbox"
+            checked={config.chunking}
+            onChange={event =>
+              setConfig({
+                ...config,
+                chunking: event.target.checked,
+              })
+            }
+          />{' '}
+          Chunking enabled
+        </label>
+      </p>
 
-      <p>Last keypress (ms): {SUPPORTS_EVENT_TIMING ? lastKeyPressDuration ?? '-': 'Not supported' }</p>
+      <p>
+        Last keypress (ms):{' '}
+        {SUPPORTS_EVENT_TIMING ? lastKeyPressDuration ?? '-' : 'Not supported'}
+      </p>
 
-      <p>Average of last 10 keypresses (ms): {SUPPORTS_EVENT_TIMING ? averageKeyPressDuration ?? '-' : 'Not supported' }</p>
+      <p>
+        Average of last 10 keypresses (ms):{' '}
+        {SUPPORTS_EVENT_TIMING
+          ? averageKeyPressDuration ?? '-'
+          : 'Not supported'}
+      </p>
 
-      <p>Last long animation frame (ms): {SUPPORTS_LOAF_TIMING ? lastLongAnimationFrameDuration ?? '-' : 'Not supported'}</p>
+      <p>
+        Last long animation frame (ms):{' '}
+        {SUPPORTS_LOAF_TIMING
+          ? lastLongAnimationFrameDuration ?? '-'
+          : 'Not supported'}
+      </p>
 
-      {SUPPORTS_EVENT_TIMING && lastKeyPressDuration === null && <p>Events shorter than 16ms may not be detected.</p>}
+      {SUPPORTS_EVENT_TIMING && lastKeyPressDuration === null && (
+        <p>Events shorter than 16ms may not be detected.</p>
+      )}
     </div>
   )
 }

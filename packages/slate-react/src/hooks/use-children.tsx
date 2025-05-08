@@ -1,4 +1,4 @@
-import React, {useCallback} from 'react'
+import React, { useCallback } from 'react'
 import {
   Ancestor,
   Descendant,
@@ -24,7 +24,12 @@ import { useDecorate } from './use-decorate'
 import { SelectedContext } from './use-selected'
 import { useSlateStatic } from './use-slate-static'
 import ChunkedChildren from '../components/chunking/chunked-children'
-import {Chunk, ChunkAncestor, ChunkTree, getChunkTreeForNode} from '../components/chunking/chunk-tree'
+import {
+  Chunk,
+  ChunkAncestor,
+  ChunkTree,
+  getChunkTreeForNode,
+} from '../components/chunking/chunk-tree'
 
 /**
  * Children.
@@ -69,23 +74,27 @@ const useChildren = (props: {
     NODE_TO_PARENT.set(n, node)
   })
 
-  const renderElementComponent = useCallback((n: Element, cachedKey?: Key) => cacheJSX(n, () => {
-    const key = cachedKey ?? ReactEditor.findKey(editor, n)
+  const renderElementComponent = useCallback(
+    (n: Element, cachedKey?: Key) =>
+      cacheJSX(n, () => {
+        const key = cachedKey ?? ReactEditor.findKey(editor, n)
 
-    return (
-      <SelectedContext.Provider key={`provider-${key.id}`} value={false}>
-        <ElementComponent
-          decorations={[]}
-          element={n}
-          key={key.id}
-          renderElement={renderElement}
-          renderPlaceholder={renderPlaceholder}
-          renderLeaf={renderLeaf}
-          renderText={renderText}
-        />
-      </SelectedContext.Provider>
-    )
-  }), [editor, renderElement, renderPlaceholder, renderLeaf, renderText])
+        return (
+          <SelectedContext.Provider key={`provider-${key.id}`} value={false}>
+            <ElementComponent
+              decorations={[]}
+              element={n}
+              key={key.id}
+              renderElement={renderElement}
+              renderPlaceholder={renderPlaceholder}
+              renderLeaf={renderLeaf}
+              renderText={renderText}
+            />
+          </SelectedContext.Provider>
+        )
+      }),
+    [editor, renderElement, renderPlaceholder, renderLeaf, renderText]
+  )
 
   const renderTextComponent = (n: Text, i: number) => {
     const key = ReactEditor.findKey(editor, n)
@@ -107,7 +116,9 @@ const useChildren = (props: {
   const chunkSize = isLeafBlock ? null : editor.getChunkSize(node)
 
   if (!chunkSize) {
-    return node.children.map((n, i) => Text.isText(n) ? renderTextComponent(n, i) : renderElementComponent(n))
+    return node.children.map((n, i) =>
+      Text.isText(n) ? renderTextComponent(n, i) : renderElementComponent(n)
+    )
   }
 
   // const p = path.concat(i)
@@ -124,9 +135,18 @@ const useChildren = (props: {
   //   }
   // }
 
-  const chunkTree = getChunkTreeForNode(editor, node, { reconcile: true, chunkSize })
+  const chunkTree = getChunkTreeForNode(editor, node, {
+    reconcile: true,
+    chunkSize,
+  })
 
-  return <ChunkTree root={chunkTree} chunk={chunkTree} renderElement={renderElementComponent} />
+  return (
+    <ChunkTree
+      root={chunkTree}
+      chunk={chunkTree}
+      renderElement={renderElementComponent}
+    />
+  )
 }
 
 const ChunkAncestor = <C extends ChunkAncestor>(props: {
@@ -136,23 +156,36 @@ const ChunkAncestor = <C extends ChunkAncestor>(props: {
 }) => {
   const { root, chunk, renderElement } = props
 
-  return chunk.children.map((chunkNode) => chunkNode.type === 'chunk'
-  ? <div key={chunkNode.key.id} style={chunkNode.children.some((c) => c.type === 'leaf') ? { contentVisibility: 'auto' } : {}}><MemoizedChunk
-
-        root={root}
-        chunk={chunkNode}
-        renderElement={renderElement}
-  /></div>
-    : renderElement(chunkNode.node, chunkNode.key)
+  return chunk.children.map(chunkNode =>
+    chunkNode.type === 'chunk' ? (
+      <div
+        key={chunkNode.key.id}
+        style={
+          chunkNode.children.some(c => c.type === 'leaf')
+            ? { contentVisibility: 'auto' }
+            : {}
+        }
+      >
+        <MemoizedChunk
+          root={root}
+          chunk={chunkNode}
+          renderElement={renderElement}
+        />
+      </div>
+    ) : (
+      renderElement(chunkNode.node, chunkNode.key)
+    )
   )
 }
 
 const ChunkTree = ChunkAncestor<ChunkTree>
 
-const MemoizedChunk = React.memo(ChunkAncestor<Chunk>, (prev, next) =>
-  prev.root === next.root &&
-  prev.renderElement === next.renderElement &&
-  !next.root.modifiedChunks.has(next.chunk)
+const MemoizedChunk = React.memo(
+  ChunkAncestor<Chunk>,
+  (prev, next) =>
+    prev.root === next.root &&
+    prev.renderElement === next.renderElement &&
+    !next.root.modifiedChunks.has(next.chunk)
 )
 
 export default useChildren

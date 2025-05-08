@@ -1,5 +1,5 @@
 import React from 'react'
-import {Element} from 'slate'
+import { Element } from 'slate'
 
 const CHUNK_SIZE = 3
 
@@ -8,11 +8,7 @@ const ChunkedChildren = (props: {
   nodes: Element[]
   children: (node: Element, i: number) => JSX.Element
 }) => {
-  const {
-    startIndex = 0,
-    nodes,
-    children: renderNode,
-  } = props
+  const { startIndex = 0, nodes, children: renderNode } = props
 
   if (nodes.length <= CHUNK_SIZE) {
     return nodes.map((node, i) => renderNode(node, startIndex + i))
@@ -23,10 +19,14 @@ const ChunkedChildren = (props: {
 
   for (let i = 0; i < CHUNK_SIZE; i++) {
     const chunkNodes = nodes.slice(i * perChunk, (i + 1) * perChunk)
-    const chunkStartIndex = startIndex + (i * perChunk)
+    const chunkStartIndex = startIndex + i * perChunk
 
     children.push(
-      <MemoizedChunkedChildren key={i} startIndex={chunkStartIndex} nodes={chunkNodes}>
+      <MemoizedChunkedChildren
+        key={i}
+        startIndex={chunkStartIndex}
+        nodes={chunkNodes}
+      >
         {renderNode}
       </MemoizedChunkedChildren>
     )
@@ -35,11 +35,13 @@ const ChunkedChildren = (props: {
   return children
 }
 
-const MemoizedChunkedChildren = React.memo(ChunkedChildren, (prev, next) =>
-  prev.startIndex === next.startIndex &&
-  prev.children === next.children &&
-  prev.nodes.length === next.nodes.length &&
-  prev.nodes.every((prevNode, i) => prevNode === next.nodes[i])
+const MemoizedChunkedChildren = React.memo(
+  ChunkedChildren,
+  (prev, next) =>
+    prev.startIndex === next.startIndex &&
+    prev.children === next.children &&
+    prev.nodes.length === next.nodes.length &&
+    prev.nodes.every((prevNode, i) => prevNode === next.nodes[i])
 ) as unknown as typeof ChunkedChildren
 
 export default MemoizedChunkedChildren
