@@ -35,7 +35,7 @@ const childEntriesToLeaves = (entries: ChildEntry[]): ChunkLeaf[] =>
     node,
   }))
 
-const NODE_TO_CHUNK_TREE = new WeakMap<Ancestor, ChunkTree>()
+export const NODE_TO_CHUNK_TREE = new WeakMap<Ancestor, ChunkTree>()
 
 export const getChunkTreeForNode = (
   editor: Editor,
@@ -272,35 +272,40 @@ class ChunkTreeManager {
    */
   private append(entries: ChildEntry[]) {
     const toChunks = (
+      perChunk: number,
       leaves: ChunkLeaf[],
       parent: ChunkAncestor
     ): ChunkDescendant[] => {
-      if (leaves.length <= this.chunkSize) return leaves
-
+      if (perChunk === 1) return leaves
       const chunks: Chunk[] = []
-      const perChunk = Math.ceil(leaves.length / this.chunkSize)
 
       for (let i = 0; i < this.chunkSize; i++) {
         const chunkNodes = leaves.slice(i * perChunk, (i + 1) * perChunk)
+        if (chunkNodes.length === 0) break
 
-        if (chunkNodes.length > 0) {
-          const chunk: Chunk = {
-            type: 'chunk',
-            key: new Key(),
-            parent,
-            children: [],
-          }
-
-          chunk.children = toChunks(chunkNodes, chunk)
-          chunks.push(chunk)
+        const chunk: Chunk = {
+          type: 'chunk',
+          key: new Key(),
+          parent,
+          children: [],
         }
+
+        chunk.children = toChunks(perChunk / this.chunkSize, chunkNodes, chunk)
+        chunks.push(chunk)
       }
 
       return chunks
     }
 
+    // Find highest power of chunk size smaller than entries.length, min 1
+    let perChunk = this.chunkSize
+    while (perChunk < entries.length) {
+      perChunk *= this.chunkSize
+    }
+    perChunk /= this.chunkSize
+
     this.root.children.push(
-      ...toChunks(childEntriesToLeaves(entries), this.root)
+      ...toChunks(perChunk, childEntriesToLeaves(entries), this.root)
     )
   }
 
