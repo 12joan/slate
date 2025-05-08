@@ -14,6 +14,7 @@ interface Config {
 }
 
 const SUPPORTS_EVENT_TIMING = typeof window !== 'undefined' && 'PerformanceEventTiming' in window
+const SUPPORTS_LOAF_TIMING = typeof window !== 'undefined' && 'PerformanceLongAnimationFrameTiming' in window
 
 const searchParams = typeof document === 'undefined' ? null : new URLSearchParams(document.location.search);
 
@@ -30,7 +31,7 @@ const setSearchParams = (config: Config) => {
   }
 }
 
-let cachedInitialValue: Descendant[] = []
+const cachedInitialValue: Descendant[] = []
 
 const getInitialValue = (blocks: number) => {
   if (cachedInitialValue.length >= blocks) {
@@ -55,7 +56,7 @@ const getInitialValue = (blocks: number) => {
     }
   }
 
-  return cachedInitialValue
+  return cachedInitialValue.slice()
 }
 
 const initialInitialValue = getInitialValue(initialConfig.blocks)
@@ -97,7 +98,7 @@ const HugeDocumentExample = () => {
 
   return (
     <>
-      <DebugUI config={config} setConfig={setConfig} />
+      <DebugUI editor={editor} config={config} setConfig={setConfig} />
 
       {rendering
         ? <div>Rendering&hellip;</div>
@@ -111,27 +112,30 @@ const HugeDocumentExample = () => {
   )
 }
 
-const elementStyle: CSSProperties = { contentVisibility: 'auto' }
-
 const Element = ({ attributes, children, element }: RenderElementProps) => {
   switch (element.type) {
     case 'heading-one':
-      return <h1 {...attributes} style={elementStyle}>{children}</h1>
+      return <h1 {...attributes}>{children}</h1>
     default:
-      return <p {...attributes} style={elementStyle}>{children}</p>
+      return <p {...attributes}>{children}</p>
   }
 }
 
 const DebugUI = ({
+  editor,
   config,
   setConfig,
 }: {
+  editor: Editor
   config: Config
   setConfig: Dispatch<Config>
 }) => {
   const [keyPressDurations, setKeyPressDurations] = useState<number[]>([])
-  const last = keyPressDurations[0] ?? null
-  const average = keyPressDurations.length === 10
+  const [lastLongAnimationFrameDuration, setLastLongAnimationFrameDuration] = useState<number | null>(null)
+
+  const lastKeyPressDuration: number | null = keyPressDurations[0] ?? null
+
+  const averageKeyPressDuration = keyPressDurations.length === 10
     ? Math.round(keyPressDurations.reduce((total, d) => total + d) / 10)
     : null
 
@@ -141,17 +145,44 @@ const DebugUI = ({
     const observer = new PerformanceObserver((list) => {
       list.getEntries().forEach((entry) => {
         if (entry.name === 'keypress') {
-          const duration = entry.processingEnd - entry.processingStart
+          // @ts-ignore Entry type is missing processingStart and processingEnd
+          const duration = Math.round(entry.processingEnd - entry.processingStart)
           setKeyPressDurations((durations) => [duration, ...durations.slice(0, 9)])
         }
       })
     })
 
-    // Register the observer for events
+    // @ts-ignore Options type is missing durationThreshold
     observer.observe({ type: "event", durationThreshold: 16 })
 
     return () => observer.disconnect()
   }, [])
+
+  useEffect(() => {
+    if (!SUPPORTS_LOAF_TIMING) return
+
+    const { apply } = editor
+    let afterOperation = false
+
+    editor.apply = (operation) => {
+      apply(operation)
+      afterOperation = true
+    }
+
+    const observer = new PerformanceObserver((list) => {
+      list.getEntries().forEach((entry) => {
+        if (afterOperation) {
+          setLastLongAnimationFrameDuration(Math.round(entry.duration))
+          afterOperation = false
+        }
+      })
+    })
+
+    // Register the observer for events
+    observer.observe({ type: "long-animation-frame" })
+
+    return () => observer.disconnect()
+  }, [editor])
 
   return (
     <div className="debug-ui">
@@ -187,15 +218,17 @@ const DebugUI = ({
             ...config,
             chunking: event.target.checked,
           })}
-        />
+        />{' '}
         Chunking enabled
       </label></p>
 
-      <p>Last keypress (ms): {SUPPORTS_EVENT_TIMING ? last ?? '-': 'Not supported' }</p>
+      <p>Last keypress (ms): {SUPPORTS_EVENT_TIMING ? lastKeyPressDuration ?? '-': 'Not supported' }</p>
 
-      <p>Average of last 10 keypresses (ms): {SUPPORTS_EVENT_TIMING ? average ?? '-' : 'Not supported' }</p>
+      <p>Average of last 10 keypresses (ms): {SUPPORTS_EVENT_TIMING ? averageKeyPressDuration ?? '-' : 'Not supported' }</p>
 
-      {SUPPORTS_EVENT_TIMING && last === null && <p>Events shorter than 16ms may not be detected.</p>}
+      <p>Last long animation frame (ms): {SUPPORTS_LOAF_TIMING ? lastLongAnimationFrameDuration ?? '-' : 'Not supported'}</p>
+
+      {SUPPORTS_EVENT_TIMING && lastKeyPressDuration === null && <p>Events shorter than 16ms may not be detected.</p>}
     </div>
   )
 }

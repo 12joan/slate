@@ -77,6 +77,7 @@ import {
 import { RestoreDOM } from './restore-dom/restore-dom'
 import { AndroidInputManager } from '../hooks/android-input-manager/android-input-manager'
 import { ComposingContext } from '../hooks/use-composing'
+import {useSlateSelector} from '../hooks/use-slate-selector'
 
 type DeferredOperation = () => void
 
@@ -179,7 +180,7 @@ export const Editable = forwardRef(
       disableDefaultStyles = false,
       ...attributes
     } = props
-    const editor = useSlate()
+    const editor = useSlateSelector((editor) => ({ editor })).editor
     // Rerender editor when composition status changed
     const [isComposing, setIsComposing] = useState(false)
     const ref = useRef<HTMLDivElement | null>(null)
