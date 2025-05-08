@@ -28,12 +28,11 @@ export type ChunkNode = ChunkTree | Chunk | ChunkLeaf
 
 type ChildEntry = [Element, Key]
 
-const childEntriesToLeaves = (entries: ChildEntry[]): ChunkLeaf[] =>
-  entries.map(([node, key]) => ({
-    type: 'leaf',
-    key,
-    node,
-  }))
+const childEntryToLeaf = ([node, key]: ChildEntry): ChunkLeaf => ({
+  type: 'leaf',
+  key,
+  node,
+})
 
 export const NODE_TO_CHUNK_TREE = new WeakMap<Ancestor, ChunkTree>()
 
@@ -161,7 +160,7 @@ class ChunkTreeManager {
           insertedChildren,
           childrenPointerIndex
         )
-        this.insertBefore(insertedEntries)
+        this.insertBefore(insertedEntries.map(childEntryToLeaf))
       }
 
       // Make sure the chunk tree contains the most recent version of all nodes
@@ -177,7 +176,7 @@ class ChunkTreeManager {
         remainingChildren,
         childrenPointerIndex
       )
-      this.append(remainingEntries)
+      this.append(remainingEntries.map(childEntryToLeaf))
     }
   }
 
@@ -198,18 +197,37 @@ class ChunkTreeManager {
     return pointerNode
   }
 
-  private enterChunk() {
+  /**
+   * Assuming the pointer is on a chunk, move the pointer into that chunk
+   *
+   * @param [end=false] If true, place the pointer on the last node of the
+   * chunk. Otherwise, place the pointer on the first node.
+   */
+  private enterChunk(end = false) {
     if (this.pointerNode?.type !== 'chunk') {
       throw new Error('Cannot enter non-chunk')
     }
 
     this.pointerIndexStack.push(this.pointerIndex)
     this.pointerChunk = this.pointerNode
-    this.pointerIndex = 0
+    this.pointerIndex = end ? this.pointerSiblings.length - 1 : 0
     this.cachedPointerNode = undefined
 
     if (this.pointerChunk.children.length === 0) {
       throw new Error('Cannot enter empty chunk')
+    }
+  }
+
+  /**
+   * Assuming the pointer is on a chunk, move the pointer into that chunk
+   * repeatedly until the pointer is on a leaf
+   *
+   * @param [end=false] If true, place the pointer on the last node of the
+   * chunk. Otherwise, place the pointer on the first node.
+   */
+  private enterChunkUntilLeaf(end = false) {
+    while (this.pointerNode?.type === 'chunk') {
+      this.enterChunk(end)
     }
   }
 
@@ -256,61 +274,81 @@ class ChunkTreeManager {
   }
 
   /**
-   * Insert nodes before the current node, leaving the pointer pointing to the
+   * Insert leaves before the current node, leaving the pointer pointing to the
    * current node
    */
-  private insertBefore(entries: ChildEntry[]) {
+  private insertBefore(leaves: ChunkLeaf[]) {
     // TODO: Use algorithm
-    const leaves = childEntriesToLeaves(entries)
     this.pointerSiblings.splice(this.pointerIndex, 0, ...leaves)
     this.pointerIndex += leaves.length
     this.invalidateChunk()
   }
 
   /**
-   * Insert nodes at the end of the chunk tree, leaving the pointer unchanged
+   * Insert leaves at the end of the chunk tree, leaving the pointer on the same
+   * node it started on, assuming it started on a leaf or at the start of the
+   * document
    */
-  private append(entries: ChildEntry[]) {
-    const toChunks = (
-      perChunk: number,
-      leaves: ChunkLeaf[],
-      parent: ChunkAncestor
-    ): ChunkDescendant[] => {
-      if (perChunk === 1) return leaves
-      const chunks: Chunk[] = []
+  private append(leaves: ChunkLeaf[]) {
+    // Move the pointer to to the node before the insertion point
+    this.returnToPreviousLeaf()
 
-      for (let i = 0; i < this.chunkSize; i++) {
-        const chunkNodes = leaves.slice(i * perChunk, (i + 1) * perChunk)
-        if (chunkNodes.length === 0) break
-
-        const chunk: Chunk = {
-          type: 'chunk',
-          key: new Key(),
-          parent,
-          children: [],
+    // try...finally so that we can use return statements without skipping the
+    // readLeaf call at the end
+    try {
+      while (this.pointerChunk.type === 'chunk') {
+        while (this.pointerSiblings.length < this.chunkSize && leaves.length > 0) {
+          this.pointerSiblings.push(leaves.shift()!)
         }
-
-        chunk.children = toChunks(perChunk / this.chunkSize, chunkNodes, chunk)
-        chunks.push(chunk)
+        this.exitChunk()
       }
 
-      return chunks
-    }
+      if (leaves.length === 0) return
 
-    // Find highest power of chunk size smaller than entries.length, min 1
-    let perChunk = this.chunkSize
-    while (perChunk < entries.length) {
-      perChunk *= this.chunkSize
-    }
-    perChunk /= this.chunkSize
+      const toChunks = (
+        perChunk: number,
+        leaves: ChunkLeaf[],
+        parent: ChunkAncestor
+      ): ChunkDescendant[] => {
+        if (perChunk === 1) return leaves
+        const chunks: Chunk[] = []
 
-    this.root.children.push(
-      ...toChunks(perChunk, childEntriesToLeaves(entries), this.root)
-    )
+        for (let i = 0; i < this.chunkSize; i++) {
+          const chunkNodes = leaves.slice(i * perChunk, (i + 1) * perChunk)
+          if (chunkNodes.length === 0) break
+
+          const chunk: Chunk = {
+            type: 'chunk',
+            key: new Key(),
+            parent,
+            children: [],
+          }
+
+          chunk.children = toChunks(perChunk / this.chunkSize, chunkNodes, chunk)
+          chunks.push(chunk)
+        }
+
+        return chunks
+      }
+
+      // Find highest power of chunk size smaller than leaves.length, min 1
+      let perChunk = this.chunkSize
+      while (perChunk < leaves.length) {
+        perChunk *= this.chunkSize
+      }
+      perChunk /= this.chunkSize
+
+      this.root.children.push(
+        ...toChunks(perChunk, leaves, this.root)
+      )
+    } finally {
+      // Undo the returnToPreviousLeaf from earlier
+      this.readLeaf()
+    }
   }
 
   /**
-   * Move the pointer to the next leaf in the chunk tree and return it
+   * Move the pointer to the next leaf in the chunk tree
    */
   private readLeaf(): ChunkLeaf | null {
     if (this.reachedEnd) return null
@@ -330,10 +368,36 @@ class ChunkTreeManager {
     }
 
     // If the next sibling or aunt is a chunk, descend into it
-    while (this.pointerNode?.type === 'chunk') {
-      this.enterChunk()
+    this.enterChunkUntilLeaf()
+
+    return this.pointerNode as ChunkLeaf
+  }
+
+  /**
+   * Move the pointer to the previous node in the chunk tree
+   */
+  private returnToPreviousLeaf() {
+    if (this.reachedEnd) {
+      this.reachedEnd = false
+      this.enterChunkUntilLeaf(true)
+      return
     }
 
-    return this.pointerNode
+    // Get the previous sibling or aunt node
+    while (true) {
+      if (this.pointerIndex >= 1) {
+        this.pointerIndex--
+        this.cachedPointerNode = undefined
+        break
+      } else if (this.pointerChunk.type === 'root') {
+        this.pointerIndex = -1
+        return
+      } else {
+        this.exitChunk()
+      }
+    }
+
+    // If the previous sibling or aunt is a chunk, descend into it
+    this.enterChunkUntilLeaf(true)
   }
 }
