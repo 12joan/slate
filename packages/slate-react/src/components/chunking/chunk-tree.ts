@@ -4,9 +4,28 @@ import { Key } from 'slate-dom'
 
 export interface ChunkTree {
   type: 'root'
-  movedNodeKeys: Set<Key>
-  modifiedChunks: Set<Chunk>
   children: ChunkDescendant[]
+
+  /**
+   * The keys of any Slate nodes that have been moved using move_node since the
+   * last render
+   *
+   * TODO: Update this from editor.apply in withReact
+   *
+   * Detecting when a node has been moved to a different position in the
+   * children array is inefficient when reconciling the chunk tree. This set
+   * makes it easier to handle moved nodes correctly.
+   */
+  movedNodeKeys: Set<Key>
+
+  /**
+   * The chunks whose descendants have been modified during the most recent
+   * reconciliation
+   *
+   * Used to determine when the otherwise memoized React components for each
+   * chunk should be re-rendered.
+   */
+  modifiedChunks: Set<Chunk>
 }
 
 export interface Chunk {
@@ -16,6 +35,9 @@ export interface Chunk {
   children: ChunkDescendant[]
 }
 
+// A chunk leaf is unrelated to a Slate leaf; it is a leaf of the chunk tree,
+// containing a single element that is a child of the Slate node the chunk tree
+// belongs to .
 export interface ChunkLeaf {
   type: 'leaf'
   key: Key
@@ -28,6 +50,11 @@ export type ChunkNode = ChunkTree | Chunk | ChunkLeaf
 
 type ChildEntry = [Element, Key]
 
+type SavedPointer = 'start' | {
+  chunk: ChunkAncestor
+  node: ChunkDescendant
+}
+
 const childEntryToLeaf = ([node, key]: ChildEntry): ChunkLeaf => ({
   type: 'leaf',
   key,
@@ -36,13 +63,20 @@ const childEntryToLeaf = ([node, key]: ChildEntry): ChunkLeaf => ({
 
 export const NODE_TO_CHUNK_TREE = new WeakMap<Ancestor, ChunkTree>()
 
+/**
+ * Get or create the chunk tree for a Slate node
+ *
+ * If the reconcile option is set to true, the chunk tree will be updated to
+ * match the current children of the node. The children are chunked
+ * automatically using the given chunk size.
+ */
 export const getChunkTreeForNode = (
   editor: Editor,
   node: Ancestor,
   options: {
-    reconcile: boolean
+    reconcile: true
     chunkSize: number
-  }
+  } | { reconcile?: false } = {}
 ) => {
   let chunkTree = NODE_TO_CHUNK_TREE.get(node)
 
@@ -69,13 +103,58 @@ export const getChunkTreeForNode = (
 
 class ChunkTreeManager {
   private editor: Editor
+
+  /**
+   * The root of the chunk tree
+   */
   private root: ChunkTree
+
+  /**
+   * The ideal size of a chunk
+   */
   private chunkSize: number
+
+  // The chunk tree manager maintains a pointer that is used to traverse the
+  // chunk tree
+
+  /**
+   * Whether the traversal has reached the end of the chunk tree
+   *
+   * When this is true, the pointerChunk and pointerIndex point to the last
+   * top-level node in the chunk tree, although pointerNode returns null.
+   */
   private reachedEnd: boolean
-  // These refer to the node in the chunk tree currently being processed
+
+  /**
+   * The chunk containing the current node
+   */
   private pointerChunk: ChunkAncestor
+
+  /**
+   * The index of the current node within pointerChunk
+   *
+   * Can be -1 to indicate that the pointer is before the start of the tree,
+   * before the first node.
+   */
   private pointerIndex: number
+
+  /**
+   * Similar to a Slate path; tracks the path of pointerChunk relative to the
+   * root.
+   *
+   * Used to move the pointer from the current chunk to the parent chunk more
+   * efficiently.
+   */
   private pointerIndexStack: number[]
+
+  /**
+   * Indexing the current chunk's children has a slight time cost, which adds up
+   * when traversing very large trees, so the current node is cached.
+   *
+   * A value of undefined means that the current node is not cached. This
+   * property must be set to undefined whenever the pointer is moved, unless
+   * the pointer is guaranteed to point to the same node that it did previously.
+   */
   private cachedPointerNode: ChunkDescendant | null | undefined
 
   constructor(editor: Editor, chunkTree: ChunkTree, chunkSize: number) {
@@ -88,10 +167,18 @@ class ChunkTreeManager {
     this.reachedEnd = false
   }
 
+  /**
+   * Update the chunk tree to match the children array, inserting, removing and
+   * updating differing nodes
+   */
   public reconcile(children: Element[]) {
-    // Sparse array of cached child keys
+    // Fetching the key for a Slate node is expensive, so cache them in a
+    // sparse array
     const childKeys = new Array<Key | undefined>(children.length)
 
+    /**
+     * Get the key for a Slate node using the cache
+     */
     const getChildKey = (childNode: Element, childIndex: number): Key => {
       const cachedKey = childKeys[childIndex]
       if (cachedKey) return cachedKey
@@ -100,15 +187,29 @@ class ChunkTreeManager {
       return key
     }
 
+    /**
+     * Convert an array of Slate nodes to an array of child entries, each
+     * containing the node and its key
+     *
+     * @param startIndex Since keys are cached using the index of each Slate
+     * node in the children array, the index of the first passed node is
+     * required to access the cached keys.
+     */
     const getChildEntries = (
       nodes: Element[],
       startIndex: number
     ): ChildEntry[] =>
       nodes.map((node, i) => [node, getChildKey(node, startIndex + i)])
 
+    // Track progress through the children array
     let childrenPointerIndex = 0
 
+    /**
+     * Read a given number of Slate nodes from the children array
+     */
     const readChildren = (n: number): Element[] => {
+      // PERF: If only one child was requested (the most common case), use
+      // array indexing instead of slice
       if (n === 1) {
         return [children[childrenPointerIndex++]]
       }
@@ -117,10 +218,25 @@ class ChunkTreeManager {
         childrenPointerIndex,
         childrenPointerIndex + n
       )
+
       childrenPointerIndex += n
       return slicedChildren
     }
 
+    /**
+     * Determine whether a Slate node with a given key appears in the unread
+     * part of the children array, and return its index relative to the current
+     * children pointer if so
+     *
+     * Searching for the Slate node object itself using indexOf is most
+     * efficient, but will fail to locate nodes that have been modified. In
+     * this case, nodes should be identified by their keys instead.
+     *
+     * Searching an array of keys using indexOf is very inefficient since
+     * fetching the keys for all children in advance is very slow. Insead, if
+     * the node search fails to return a value, fetch the keys of each
+     * remaining child one by one and compare it to the known key.
+     */
     const lookAheadForChild = (childNode: Element, childKey: Key) => {
       const elementResult = children.indexOf(childNode, childrenPointerIndex)
       if (elementResult > -1) return elementResult - childrenPointerIndex
@@ -134,17 +250,21 @@ class ChunkTreeManager {
       return -1
     }
 
-    // Scan nodes in the chunk tree
-    let treeNode: ChunkLeaf | null
-    while ((treeNode = this.readLeaf())) {
+    let treeLeaf: ChunkLeaf | null
+
+    // Read leaves from the tree one by one, each one representing a single
+    // Slate node. Each leaf from the tree is compared to the current node in
+    // the children array to determine whether nodes have been inserted,
+    // removed or updated.
+    while ((treeLeaf = this.readLeaf())) {
       // Check where the tree node appears in the children array. Nodes are
       // removed from the chunk tree on move_node, so the only way for lookAhead
       // to be greater than 0 is if nodes have been inserted in the children
       // array prior to the tree node.
       // TODO: Use movedNodeKeys
-      const lookAhead = lookAheadForChild(treeNode.node, treeNode.key)
+      const lookAhead = lookAheadForChild(treeLeaf.node, treeLeaf.key)
 
-      // If the tree node is not present in children, remove it
+      // If the tree leaf is not present in children, remove it
       if (lookAhead === -1) {
         this.remove()
         continue
@@ -160,30 +280,58 @@ class ChunkTreeManager {
           insertedChildren,
           childrenPointerIndex
         )
+
         this.insertBefore(insertedEntries.map(childEntryToLeaf))
       }
 
-      // Make sure the chunk tree contains the most recent version of all nodes
-      if (treeNode.node !== matchingChildNode) {
-        treeNode.node = matchingChildNode
+      // Make sure the chunk tree contains the most recent version of the
+      // Slate node
+      if (treeLeaf.node !== matchingChildNode) {
+        treeLeaf.node = matchingChildNode
         this.invalidateChunk()
       }
     }
 
+    // If there are still Slate nodes remaining from the children array
+    // that were not matched to nodes in the tree, insert them at the end of
+    // the tree
     if (childrenPointerIndex < children.length) {
       const remainingChildren = children.slice(childrenPointerIndex)
+
       const remainingEntries = getChildEntries(
         remainingChildren,
         childrenPointerIndex
       )
-      this.append(remainingEntries.map(childEntryToLeaf))
+
+      // Move the pointer back to the final leaf in the tree, or the start of
+      // the tree if the tree is currently empty
+      this.returnToPreviousLeaf()
+      this.insertAfter(remainingEntries.map(childEntryToLeaf))
     }
   }
 
+  /**
+   * Whether the pointer is at the start of the tree
+   */
+  private get atStart() {
+    return this.pointerChunk.type === 'root' && this.pointerIndex === -1
+  }
+
+  /**
+   * The siblings of the current node
+   */
   private get pointerSiblings(): ChunkDescendant[] {
     return this.pointerChunk.children
   }
 
+  /**
+   * Cached getter for the current node
+   *
+   * If the pointer is at the start or end of the document, returns null.
+   *
+   * Usually, the current node is a chunk leaf, although it can be a chunk
+   * while insertions are in progress.
+   */
   private get pointerNode(): ChunkDescendant | null {
     if (this.cachedPointerNode !== undefined) return this.cachedPointerNode
 
@@ -198,12 +346,76 @@ class ChunkTreeManager {
   }
 
   /**
-   * Assuming the pointer is on a chunk, move the pointer into that chunk
-   *
-   * @param [end=false] If true, place the pointer on the last node of the
-   * chunk. Otherwise, place the pointer on the first node.
+   * Save the current pointer to be restored later
    */
-  private enterChunk(end = false) {
+  private savePointer(): SavedPointer {
+    if (this.atStart) return 'start'
+
+    // istanbul ignore next
+    if (!this.pointerNode) {
+      throw new Error('Cannot save pointer when pointerNode is null')
+    }
+
+    return {
+      chunk: this.pointerChunk,
+      node: this.pointerNode,
+    }
+  }
+
+  /**
+   * Restore the pointer to a previous state
+   */
+  private restorePointer(savedPointer: SavedPointer) {
+    if (savedPointer === 'start') {
+      this.pointerChunk = this.root
+      this.pointerIndex = -1
+      this.pointerIndexStack = []
+      this.reachedEnd = false
+      this.cachedPointerNode = undefined
+      return
+    }
+
+    // Since nodes may have been inserted or removed prior to the saved
+    // pointer since it was saved, the index and index stack must be
+    // recomputed. This is slow, but this is fine since restoring a pointer is
+    // not a frequent operation.
+
+    const { chunk, node } = savedPointer
+    const index = chunk.children.indexOf(node)
+
+    // istanbul ignore next
+    if (index === -1) {
+      throw new Error('Cannot restore point because saved node is no longer in saved chunk')
+    }
+
+    let indexStack: number[] = []
+
+    for (let c = chunk; c.type === 'chunk'; c = c.parent) {
+      const chunkIndex = c.parent.children.indexOf(c)
+
+      // istanbul ignore next
+      if (chunkIndex === -1) {
+        throw new Error('Cannot restore point because saved chunk is no longer connected to root')
+      }
+
+      indexStack.unshift(chunkIndex)
+    }
+
+    this.pointerChunk = chunk
+    this.pointerIndex = index
+    this.pointerIndexStack = indexStack
+    this.reachedEnd = false
+    this.cachedPointerNode = node
+  }
+
+  /**
+   * Assuming the current node is a chunk, move the pointer into that chunk
+   *
+   * @param end If true, place the pointer on the last node of the chunk.
+   * Otherwise, place the pointer on the first node.
+   */
+  private enterChunk(end: boolean) {
+    // istanbul ignore next
     if (this.pointerNode?.type !== 'chunk') {
       throw new Error('Cannot enter non-chunk')
     }
@@ -213,28 +425,30 @@ class ChunkTreeManager {
     this.pointerIndex = end ? this.pointerSiblings.length - 1 : 0
     this.cachedPointerNode = undefined
 
+    // istanbul ignore next
     if (this.pointerChunk.children.length === 0) {
       throw new Error('Cannot enter empty chunk')
     }
   }
 
   /**
-   * Assuming the pointer is on a chunk, move the pointer into that chunk
-   * repeatedly until the pointer is on a leaf
+   * Assuming the current node is a chunk, move the pointer into that chunk
+   * repeatedly until the current node is a leaf
    *
-   * @param [end=false] If true, place the pointer on the last node of the
-   * chunk. Otherwise, place the pointer on the first node.
+   * @param end If true, place the pointer on the last node of the chunk.
+   * Otherwise, place the pointer on the first node.
    */
-  private enterChunkUntilLeaf(end = false) {
+  private enterChunkUntilLeaf(end: boolean) {
     while (this.pointerNode?.type === 'chunk') {
       this.enterChunk(end)
     }
   }
 
   /**
-   * Set the pointer to the parent chunk
+   * Move the pointer to the parent chunk
    */
   private exitChunk() {
+    // istanbul ignore next
     if (this.pointerChunk.type === 'root') {
       throw new Error('Cannot exit root')
     }
@@ -251,6 +465,7 @@ class ChunkTreeManager {
    */
   private remove() {
     this.pointerSiblings.splice(this.pointerIndex--, 1)
+    this.cachedPointerNode = undefined
 
     if (
       this.pointerSiblings.length === 0 &&
@@ -274,83 +489,144 @@ class ChunkTreeManager {
   }
 
   /**
-   * Insert leaves before the current node, leaving the pointer pointing to the
-   * current node
+   * Insert leaves before the current leaf
    */
   private insertBefore(leaves: ChunkLeaf[]) {
-    // TODO: Use algorithm
-    this.pointerSiblings.splice(this.pointerIndex, 0, ...leaves)
-    this.pointerIndex += leaves.length
-    this.invalidateChunk()
+    this.returnToPreviousLeaf()
+    this.insertAfter(leaves)
+    this.readLeaf()
   }
 
   /**
-   * Insert leaves at the end of the chunk tree, leaving the pointer on the same
-   * node it started on, assuming it started on a leaf or at the start of the
-   * document
+   * Insert leaves after the current leaf
+   *
+   * The insertion algorithm first checks for any chunk we're currently at the
+   * end of that can receive additional leaves. Next, it tries to insert leaves
+   * at the starts of any subsequent chunks.
+   *
+   * Any remaining leaves are passed to rawInsertAfter to be chunked and
+   * inserted at the highest possible level.
    */
-  private append(leaves: ChunkLeaf[]) {
-    // Move the pointer to to the node before the insertion point
-    this.returnToPreviousLeaf()
+  private insertAfter(leaves: ChunkLeaf[]) {
+    /* istanbul ignore next */
+    if (leaves.length === 0) return
 
-    // try...finally so that we can use return statements without skipping the
-    // readLeaf call at the end
-    try {
-      while (this.pointerChunk.type === 'chunk') {
-        while (this.pointerSiblings.length < this.chunkSize && leaves.length > 0) {
-          this.pointerSiblings.push(leaves.shift()!)
+    // While at the end of a chunk, insert any leaves that will fit, and then
+    // exit the chunk
+    while (
+      this.pointerChunk.type === 'chunk' &&
+      this.pointerIndex === this.pointerSiblings.length - 1
+    ) {
+      const remainingCapacity = this.chunkSize - this.pointerSiblings.length
+      const toInsertCount = Math.min(remainingCapacity, leaves.length)
+      const leavesToInsert = leaves.splice(0, toInsertCount)
+      this.pointerSiblings.push(...leavesToInsert)
+      this.exitChunk()
+    }
+
+    if (leaves.length === 0) return
+
+    // Save the pointer so that we can come back here after inserting leaves
+    // into the starts of subsequent blocks
+    const rawInsertPointer = this.savePointer()
+
+    // If leaves are inserted into the start of a subsequent block, then we
+    // eventually need to restore the pointer to the last such inserted leaf
+    let finalPointer: SavedPointer | null = null
+
+    // Move the pointer into the chunk containing the next leaf, if it exists
+    if (this.readLeaf()) {
+      // While at the start of a chunk, insert any leaves that will fit, and
+      // then exit the chunk
+      while (
+        this.pointerChunk.type === 'chunk' &&
+        this.pointerIndex === 0
+      ) {
+        const remainingCapacity = this.chunkSize - this.pointerSiblings.length
+        const toInsertCount = Math.min(remainingCapacity, leaves.length)
+        const leavesToInsert = leaves.splice(-toInsertCount, toInsertCount)
+        this.pointerSiblings.unshift(...leavesToInsert)
+
+        if (!finalPointer) {
+          this.pointerIndex = toInsertCount - 1
+          this.cachedPointerNode = undefined
+          finalPointer = this.savePointer()
         }
+
         this.exitChunk()
       }
+    }
 
-      if (leaves.length === 0) return
+    // If there are leaves left to insert, insert them between the end of the
+    // previous chunk and the start of the first subsequent chunk, or wherever
+    // the pointer ended up after the first batch of insertions
+    if (leaves.length > 0) {
+      this.restorePointer(rawInsertPointer)
+      this.rawInsertAfter(leaves)
+    }
 
-      const toChunks = (
-        perChunk: number,
-        leaves: ChunkLeaf[],
-        parent: ChunkAncestor
-      ): ChunkDescendant[] => {
-        if (perChunk === 1) return leaves
-        const chunks: Chunk[] = []
+    if (finalPointer) {
+      this.restorePointer(finalPointer)
+    }
+  }
 
-        for (let i = 0; i < this.chunkSize; i++) {
-          const chunkNodes = leaves.slice(i * perChunk, (i + 1) * perChunk)
-          if (chunkNodes.length === 0) break
+  /**
+   * Insert leaves immediately after the current node, chunking them according
+   * to the number of nodes already in the parent plus the number of nodes
+   * being inserted
+   */
+  private rawInsertAfter(leaves: ChunkLeaf[]) {
+    // istanbul ignore next
+    if (leaves.length === 0) return
 
-          const chunk: Chunk = {
-            type: 'chunk',
-            key: new Key(),
-            parent,
-            children: [],
-          }
+    const groupIntoChunks = (
+      leaves: ChunkLeaf[],
+      parent: ChunkAncestor,
+      perChunk: number,
+    ): ChunkDescendant[] => {
+      if (perChunk === 1) return leaves
+      const chunks: Chunk[] = []
 
-          chunk.children = toChunks(perChunk / this.chunkSize, chunkNodes, chunk)
-          chunks.push(chunk)
+      for (let i = 0; i < this.chunkSize; i++) {
+        const chunkNodes = leaves.slice(i * perChunk, (i + 1) * perChunk)
+        if (chunkNodes.length === 0) break
+
+        const chunk: Chunk = {
+          type: 'chunk',
+          key: new Key(),
+          parent,
+          children: [],
         }
 
-        return chunks
+        chunk.children = groupIntoChunks(chunkNodes, chunk, perChunk / this.chunkSize)
+        chunks.push(chunk)
       }
 
-      // Find highest power of chunk size smaller than leaves.length, min 1
-      let perChunk = this.chunkSize
-      while (perChunk < leaves.length) {
-        perChunk *= this.chunkSize
-      }
-      perChunk /= this.chunkSize
-
-      this.root.children.push(
-        ...toChunks(perChunk, leaves, this.root)
-      )
-    } finally {
-      // Undo the returnToPreviousLeaf from earlier
-      this.readLeaf()
+      return chunks
     }
+
+    // Determine the chunking depth based on the number of existing nodes in
+    // the chunk and the number of nodes being inserted
+    const newTotal = this.pointerSiblings.length + leaves.length
+
+    // Find highest power of chunk size smaller than newTotal, min 1
+    let perChunk = this.chunkSize
+    while (perChunk < newTotal) {
+      perChunk *= this.chunkSize
+    }
+    perChunk /= this.chunkSize
+
+    const chunks = groupIntoChunks(leaves, this.root, perChunk)
+    this.pointerSiblings.splice(this.pointerIndex + 1, 0, ...chunks)
+    this.pointerIndex += chunks.length
+    this.invalidateChunk()
   }
 
   /**
    * Move the pointer to the next leaf in the chunk tree
    */
   private readLeaf(): ChunkLeaf | null {
+    /* istanbul ignore next */
     if (this.reachedEnd) return null
 
     // Get the next sibling or aunt node
@@ -368,15 +644,17 @@ class ChunkTreeManager {
     }
 
     // If the next sibling or aunt is a chunk, descend into it
-    this.enterChunkUntilLeaf()
+    this.enterChunkUntilLeaf(false)
 
     return this.pointerNode as ChunkLeaf
   }
 
   /**
-   * Move the pointer to the previous node in the chunk tree
+   * Move the pointer to the previous leaf in the chunk tree
    */
   private returnToPreviousLeaf() {
+    // If we were at the end of the tree, descend into the end of the last
+    // chunk in the tree
     if (this.reachedEnd) {
       this.reachedEnd = false
       this.enterChunkUntilLeaf(true)

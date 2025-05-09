@@ -10,6 +10,18 @@ const config = {
     ],
   },
   testEnvironment: 'jsdom',
+  collectCoverage: true,
+  collectCoverageFrom: [
+    './packages/slate-react/src/components/chunking/chunk-tree.ts',
+  ],
+  coverageThreshold: {
+    './packages/slate-react/src/components/chunking/chunk-tree.ts': {
+      branches: 100,
+      functions: 100,
+      lines: 100,
+      statements: 100,
+    },
+  },
 }
 
 module.exports = config
