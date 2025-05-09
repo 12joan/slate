@@ -75,6 +75,7 @@ export const NODE_TO_CHUNK_TREE = new WeakMap<Ancestor, ChunkTree>()
 export const getChunkTreeForNode = (
   editor: Editor,
   node: Ancestor,
+  // istanbul ignore next
   options:
     | {
         reconcile: true
@@ -179,6 +180,7 @@ class ChunkTreeManager {
     editor: Editor,
     chunkTree: ChunkTree,
     chunkSize: number,
+    // istanbul ignore next
     debug: boolean = false
   ) {
     this.editor = editor
@@ -563,7 +565,7 @@ class ChunkTreeManager {
    * inserted at the highest possible level.
    */
   private insertAfter(leaves: ChunkLeaf[]) {
-    /* istanbul ignore next */
+    // istanbul ignore next
     if (leaves.length === 0) return
 
     let beforeDepth = 0
@@ -705,7 +707,7 @@ class ChunkTreeManager {
    * Move the pointer to the next leaf in the chunk tree
    */
   private readLeaf(): ChunkLeaf | null {
-    /* istanbul ignore next */
+    // istanbul ignore next
     if (this.reachedEnd) return null
 
     // Get the next sibling or aunt node
