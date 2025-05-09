@@ -5,6 +5,7 @@ import {
   Chunk,
   ChunkAncestor,
   ChunkDescendant,
+  ChunkLeaf,
   ChunkNode,
   ChunkTree,
   NODE_TO_CHUNK_TREE,
@@ -89,6 +90,21 @@ const createEditorWithShape = (treeShape: TreeShape[]) => {
   editor.children = children
   NODE_TO_CHUNK_TREE.set(editor, chunkTree)
   return editor
+}
+
+const createPRNG = (seed: number) => {
+  const mask = 0xffffffff
+  let m_w = (123456789 + seed) & mask
+  let m_z = (987654321 - seed) & mask
+
+  return () => {
+    m_z = (36969 * (m_z & 65535) + (m_z >>> 16)) & mask
+    m_w = (18000 * (m_w & 65535) + (m_w >>> 16)) & mask
+
+    let result = ((m_z << 16) + (m_w & 65535)) >>> 0
+    result /= 4294967296
+    return result
+  }
 }
 
 describe('getChunkTreeForNode', () => {
@@ -264,6 +280,36 @@ describe('getChunkTreeForNode', () => {
             ['27', '28', '29'],
           ],
           [['30']],
+        ])
+      })
+
+      it('inserts nodes one by one in reverse order', () => {
+        const editor = createEditorWithShape([])
+        let chunkTree: ChunkTree
+
+        blocks(31)
+          .reverse()
+          .forEach(node => {
+            Transforms.insertNodes(editor, node, { at: [0] })
+            chunkTree = reconcileEditor(editor)
+          })
+
+        expect(getTreeShape(chunkTree!)).toEqual([
+          [['0']],
+          [
+            ['1', '2', '3'],
+            ['4', '5', '6'],
+            ['7', '8', '9'],
+          ],
+          ['10', '11', '12'],
+          ['13', '14', '15'],
+          ['16', '17', '18'],
+          ['19', '20', '21'],
+          ['22', '23', '24'],
+          ['25', '26', '27'],
+          '28',
+          '29',
+          '30',
         ])
       })
     })
@@ -503,10 +549,81 @@ describe('getChunkTreeForNode', () => {
       const chunkTree = reconcileEditor(editor)
       expect(getTreeShape(chunkTree)).toEqual(['0', '2'])
     })
+
+    it('removes multiple consecutive nodes', () => {
+      const editor = createEditorWithShape(['0', ['1', '2', '3'], '4'])
+      Transforms.removeNodes(editor, { at: [3] })
+      Transforms.removeNodes(editor, { at: [2] })
+      const chunkTree = reconcileEditor(editor)
+      expect(getTreeShape(chunkTree)).toEqual(['0', ['1'], '4'])
+    })
+
+    it('removes multiple non-consecutive nodes', () => {
+      const editor = createEditorWithShape(['0', ['1', '2', '3'], '4'])
+      Transforms.removeNodes(editor, { at: [3] })
+      Transforms.removeNodes(editor, { at: [1] })
+      const chunkTree = reconcileEditor(editor)
+      expect(getTreeShape(chunkTree)).toEqual(['0', ['2'], '4'])
+    })
+  })
+
+  describe('removing and inserting nodes', () => {
+    it('removes and inserts a node from the start', () => {
+      const editor = createEditorWithShape(['0', [['1']], '2'])
+      Transforms.removeNodes(editor, { at: [0] })
+      Transforms.insertNodes(editor, block('x'), { at: [0] })
+      const chunkTree = reconcileEditor(editor)
+      expect(getTreeShape(chunkTree)).toEqual([[['x', '1']], '2'])
+    })
+
+    it('removes and inserts a node from the middle', () => {
+      const editor = createEditorWithShape(['0', [['1']], '2'])
+      Transforms.removeNodes(editor, { at: [1] })
+      Transforms.insertNodes(editor, block('x'), { at: [1] })
+      const chunkTree = reconcileEditor(editor)
+      expect(getTreeShape(chunkTree)).toEqual(['0', 'x', '2'])
+    })
+
+    it('removes and inserts a node from the end', () => {
+      const editor = createEditorWithShape(['0', [['1']], '2'])
+      Transforms.removeNodes(editor, { at: [2] })
+      Transforms.insertNodes(editor, block('x'), { at: [2] })
+      const chunkTree = reconcileEditor(editor)
+      expect(getTreeShape(chunkTree)).toEqual(['0', [['1', 'x']]])
+    })
+
+    it('removes 2 nodes and inserts 1 node', () => {
+      const editor = createEditorWithShape(['0', ['1', '2'], '2'])
+      Transforms.removeNodes(editor, { at: [2] })
+      Transforms.removeNodes(editor, { at: [1] })
+      Transforms.insertNodes(editor, block('x'), { at: [1] })
+      const chunkTree = reconcileEditor(editor)
+      expect(getTreeShape(chunkTree)).toEqual(['0', 'x', '2'])
+    })
+
+    it('removes 1 nodes and inserts 2 node', () => {
+      const editor = createEditorWithShape(['0', ['1'], '2'])
+      Transforms.removeNodes(editor, { at: [1] })
+      Transforms.insertNodes(editor, block('x'), { at: [1] })
+      Transforms.insertNodes(editor, block('y'), { at: [2] })
+      const chunkTree = reconcileEditor(editor)
+      expect(getTreeShape(chunkTree)).toEqual(['0', ['x', 'y'], '2'])
+    })
   })
 
   describe('updating nodes', () => {
-    it('invalidates ancestor chunks of updated slate nodes', () => {
+    it('replaces updated Slate nodes in the chunk tree', () => {
+      const editor = createEditorWithShape(['0', ['1'], '2'])
+      Transforms.setNodes(editor, { updated: true } as any, { at: [1] })
+
+      const chunkTree = reconcileEditor(editor)
+      const chunk = chunkTree.children[1] as Chunk
+      const leaf = chunk.children[0] as ChunkLeaf
+
+      expect(leaf.node).toMatchObject({ updated: true })
+    })
+
+    it('invalidates ancestor chunks of updated Slate nodes', () => {
       const editor = createEditorWithShape(['0', [['1']], '2'])
       Transforms.insertText(editor, 'x', { at: [1, 0] })
 
@@ -519,6 +636,75 @@ describe('getChunkTreeForNode', () => {
       expect(chunkTree.modifiedChunks).toEqual(
         new Set([outerChunk, innerChunk])
       )
+    })
+  })
+
+  describe('random testing', () => {
+    it('remains correct after random operations', () => {
+      // Hard code a value here to reproduce a test failure
+      const seed = Math.floor(10000000 * Math.random())
+      const random = createPRNG(seed)
+
+      const duration = 250
+      const startTime = performance.now()
+      const endTime = startTime + duration
+      let iteration = 0
+
+      try {
+        while (performance.now() < endTime) {
+          iteration++
+
+          const editor = withReact(createEditor())
+
+          const randomPosition = (includeEnd: boolean) =>
+            Math.floor(
+              random() * (editor.children.length + (includeEnd ? 1 : 0))
+            )
+
+          for (let i = 0; i < 30; i++) {
+            const randomValue = random()
+
+            if (randomValue < 0.33) {
+              reconcileEditor(editor)
+            } else if (randomValue < 0.66) {
+              Transforms.insertNodes(editor, block(i.toString()), {
+                at: [randomPosition(true)],
+              })
+            } else if (randomValue < 0.8) {
+              if (editor.children.length > 0) {
+                Transforms.removeNodes(editor, { at: [randomPosition(false)] })
+              }
+            } else {
+              if (editor.children.length > 0) {
+                Transforms.setNodes(editor, { updated: i } as any, {
+                  at: [randomPosition(false)],
+                })
+              }
+            }
+          }
+
+          const chunkTree = reconcileEditor(editor)
+          const chunkTreeSlateNodes: Element[] = []
+
+          const flattenTree = (node: ChunkNode) => {
+            if (node.type === 'leaf') {
+              chunkTreeSlateNodes.push(node.node)
+            } else {
+              node.children.forEach(flattenTree)
+            }
+          }
+
+          flattenTree(chunkTree)
+
+          expect(chunkTreeSlateNodes).toEqual(editor.children)
+        }
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `Random testing encountered an error or test failure on iteration ${iteration}. To reproduce this failure reliably, use the random seed: ${seed}`
+        )
+        throw e
+      }
     })
   })
 })

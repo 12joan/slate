@@ -577,8 +577,12 @@ class ChunkTreeManager {
     ) {
       const remainingCapacity = this.chunkSize - this.pointerSiblings.length
       const toInsertCount = Math.min(remainingCapacity, leaves.length)
-      const leavesToInsert = leaves.splice(0, toInsertCount)
-      this.rawInsertAfter(leavesToInsert, beforeDepth)
+
+      if (toInsertCount > 0) {
+        const leavesToInsert = leaves.splice(0, toInsertCount)
+        this.rawInsertAfter(leavesToInsert, beforeDepth)
+      }
+
       this.exitChunk()
       beforeDepth++
     }
@@ -600,17 +604,20 @@ class ChunkTreeManager {
       while (this.pointerChunk.type === 'chunk' && this.pointerIndex === 0) {
         const remainingCapacity = this.chunkSize - this.pointerSiblings.length
         const toInsertCount = Math.min(remainingCapacity, leaves.length)
-        const leavesToInsert = leaves.splice(-toInsertCount, toInsertCount)
 
-        // Insert the leaves at the start of the chunk
-        this.pointerIndex = -1
-        this.cachedPointerNode = undefined
-        this.rawInsertAfter(leavesToInsert, afterDepth)
+        if (toInsertCount > 0) {
+          const leavesToInsert = leaves.splice(-toInsertCount, toInsertCount)
 
-        // If this is the first batch of insertions at the start of a subsequent
-        // chunk, set the final pointer to the last inserted leaf
-        if (!finalPointer) {
-          finalPointer = this.savePointer()
+          // Insert the leaves at the start of the chunk
+          this.pointerIndex = -1
+          this.cachedPointerNode = undefined
+          this.rawInsertAfter(leavesToInsert, afterDepth)
+
+          // If this is the first batch of insertions at the start of a
+          // subsequent chunk, set the final pointer to the last inserted leaf
+          if (!finalPointer) {
+            finalPointer = this.savePointer()
+          }
         }
 
         this.exitChunk()
