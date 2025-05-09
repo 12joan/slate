@@ -1,13 +1,5 @@
 import React, { useCallback } from 'react'
-import {
-  Ancestor,
-  Descendant,
-  Editor,
-  Element,
-  Range,
-  DecoratedRange,
-  Text,
-} from 'slate'
+import { Ancestor, Editor, Element, DecoratedRange, Text } from 'slate'
 import { Key } from 'slate-dom'
 import {
   RenderElementProps,
@@ -20,30 +12,18 @@ import ElementComponent from '../components/element'
 import TextComponent from '../components/text'
 import { ReactEditor } from '../plugin/react-editor'
 import { IS_NODE_MAP_DIRTY, NODE_TO_INDEX, NODE_TO_PARENT } from 'slate-dom'
-import { useDecorate } from './use-decorate'
 import { SelectedContext } from './use-selected'
 import { useSlateStatic } from './use-slate-static'
-import ChunkedChildren from '../components/chunking/chunked-children'
 import {
-  Chunk,
-  ChunkAncestor,
-  ChunkTree,
+  type Chunk as ChunkType,
+  type ChunkAncestor as ChunkAncestorType,
+  type ChunkTree as ChunkTreeType,
   getChunkTreeForNode,
 } from '../components/chunking/chunk-tree'
 
 /**
  * Children.
  */
-
-const jsxCache = new WeakMap<Descendant, JSX.Element>()
-
-const cacheJSX = (node: Descendant, render: () => JSX.Element): JSX.Element => {
-  // const cached = jsxCache.get(node)
-  // if (cached) return cached
-  const jsx = render()
-  // jsxCache.set(node, jsx)
-  return jsx
-}
 
 const useChildren = (props: {
   decorations: DecoratedRange[]
@@ -75,24 +55,23 @@ const useChildren = (props: {
   })
 
   const renderElementComponent = useCallback(
-    (n: Element, cachedKey?: Key) =>
-      cacheJSX(n, () => {
-        const key = cachedKey ?? ReactEditor.findKey(editor, n)
+    (n: Element, cachedKey?: Key) => {
+      const key = cachedKey ?? ReactEditor.findKey(editor, n)
 
-        return (
-          <SelectedContext.Provider key={`provider-${key.id}`} value={false}>
-            <ElementComponent
-              decorations={[]}
-              element={n}
-              key={key.id}
-              renderElement={renderElement}
-              renderPlaceholder={renderPlaceholder}
-              renderLeaf={renderLeaf}
-              renderText={renderText}
-            />
-          </SelectedContext.Provider>
-        )
-      }),
+      return (
+        <SelectedContext.Provider key={`provider-${key.id}`} value={false}>
+          <ElementComponent
+            decorations={[]}
+            element={n}
+            key={key.id}
+            renderElement={renderElement}
+            renderPlaceholder={renderPlaceholder}
+            renderLeaf={renderLeaf}
+            renderText={renderText}
+          />
+        </SelectedContext.Provider>
+      )
+    },
     [editor, renderElement, renderPlaceholder, renderLeaf, renderText]
   )
 
@@ -148,8 +127,8 @@ const useChildren = (props: {
   )
 }
 
-const ChunkAncestor = <C extends ChunkAncestor>(props: {
-  root: ChunkTree
+const ChunkAncestor = <C extends ChunkAncestorType>(props: {
+  root: ChunkTreeType
   chunk: C
   renderElement: (node: Element, key: Key) => JSX.Element
 }) => {
@@ -177,10 +156,10 @@ const ChunkAncestor = <C extends ChunkAncestor>(props: {
   )
 }
 
-const ChunkTree = ChunkAncestor<ChunkTree>
+const ChunkTree = ChunkAncestor<ChunkTreeType>
 
 const MemoizedChunk = React.memo(
-  ChunkAncestor<Chunk>,
+  ChunkAncestor<ChunkType>,
   (prev, next) =>
     prev.root === next.root &&
     prev.renderElement === next.renderElement &&
