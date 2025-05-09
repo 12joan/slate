@@ -1,4 +1,4 @@
-import { Ancestor, Element, Editor } from 'slate'
+import { Ancestor, Element, Editor, Path } from 'slate'
 import { ReactEditor } from '../../plugin/react-editor'
 import { Key } from 'slate-dom'
 
@@ -79,6 +79,7 @@ export const getChunkTreeForNode = (
     | {
         reconcile: true
         chunkSize: number
+        debug?: boolean
       }
     | { reconcile?: false } = {}
 ) => {
@@ -97,7 +98,12 @@ export const getChunkTreeForNode = (
 
   if (options.reconcile) {
     chunkTree.modifiedChunks.clear()
-    const manager = new ChunkTreeManager(editor, chunkTree, options.chunkSize)
+    const manager = new ChunkTreeManager(
+      editor,
+      chunkTree,
+      options.chunkSize,
+      options.debug
+    )
     manager.reconcile(node.children as Element[])
     chunkTree.movedNodeKeys.clear()
   }
@@ -117,6 +123,14 @@ class ChunkTreeManager {
    * The ideal size of a chunk
    */
   private chunkSize: number
+
+  /**
+   * Whether debug mode is enabled
+   *
+   * If enabled, the pointer state will be checked for internal consistency
+   * after each mutating operation.
+   */
+  private debug: boolean
 
   // The chunk tree manager maintains a pointer that is used to traverse the
   // chunk tree
@@ -161,14 +175,21 @@ class ChunkTreeManager {
    */
   private cachedPointerNode: ChunkDescendant | null | undefined
 
-  constructor(editor: Editor, chunkTree: ChunkTree, chunkSize: number) {
+  constructor(
+    editor: Editor,
+    chunkTree: ChunkTree,
+    chunkSize: number,
+    debug: boolean = false
+  ) {
     this.editor = editor
     this.root = chunkTree
     this.chunkSize = chunkSize
+    this.debug = debug
     this.pointerChunk = chunkTree
     this.pointerIndex = -1
     this.pointerIndexStack = []
     this.reachedEnd = false
+    this.validateState()
   }
 
   /**
@@ -329,24 +350,50 @@ class ChunkTreeManager {
   }
 
   /**
-   * Cached getter for the current node
+   * Get the current node (uncached)
    *
    * If the pointer is at the start or end of the document, returns null.
    *
    * Usually, the current node is a chunk leaf, although it can be a chunk
    * while insertions are in progress.
    */
-  private get pointerNode(): ChunkDescendant | null {
-    if (this.cachedPointerNode !== undefined) return this.cachedPointerNode
-
+  private getPointerNode(): ChunkDescendant | null {
     if (this.reachedEnd || this.pointerIndex === -1) {
-      this.cachedPointerNode = null
       return null
     }
 
-    const pointerNode = this.pointerSiblings[this.pointerIndex]
+    return this.pointerSiblings[this.pointerIndex]
+  }
+
+  /**
+   * Cached getter for the current node
+   */
+  private get pointerNode(): ChunkDescendant | null {
+    if (this.cachedPointerNode !== undefined) return this.cachedPointerNode
+    const pointerNode = this.getPointerNode()
     this.cachedPointerNode = pointerNode
     return pointerNode
+  }
+
+  /**
+   * Get the path of a chunk relative to the root, returning null if the chunk
+   * is not connected to the root
+   */
+  private getChunkPath(chunk: ChunkAncestor): number[] | null {
+    const path: number[] = []
+
+    for (let c = chunk; c.type === 'chunk'; c = c.parent) {
+      const index = c.parent.children.indexOf(c)
+
+      // istanbul ignore next
+      if (index === -1) {
+        return null
+      }
+
+      path.unshift(index)
+    }
+
+    return path
   }
 
   /**
@@ -394,19 +441,13 @@ class ChunkTreeManager {
       )
     }
 
-    const indexStack: number[] = []
+    const indexStack = this.getChunkPath(chunk)
 
-    for (let c = chunk; c.type === 'chunk'; c = c.parent) {
-      const chunkIndex = c.parent.children.indexOf(c)
-
-      // istanbul ignore next
-      if (chunkIndex === -1) {
-        throw new Error(
-          'Cannot restore point because saved chunk is no longer connected to root'
-        )
-      }
-
-      indexStack.unshift(chunkIndex)
+    // istanbul ignore next
+    if (!indexStack) {
+      throw new Error(
+        'Cannot restore point because saved chunk is no longer connected to root'
+      )
     }
 
     this.pointerChunk = chunk
@@ -414,6 +455,7 @@ class ChunkTreeManager {
     this.pointerIndexStack = indexStack
     this.reachedEnd = false
     this.cachedPointerNode = node
+    this.validateState()
   }
 
   /**
@@ -432,6 +474,7 @@ class ChunkTreeManager {
     this.pointerChunk = this.pointerNode
     this.pointerIndex = end ? this.pointerSiblings.length - 1 : 0
     this.cachedPointerNode = undefined
+    this.validateState()
 
     // istanbul ignore next
     if (this.pointerChunk.children.length === 0) {
@@ -465,6 +508,7 @@ class ChunkTreeManager {
     this.pointerChunk = previousPointerChunk.parent
     this.pointerIndex = this.pointerIndexStack.pop()!
     this.cachedPointerNode = undefined
+    this.validateState()
   }
 
   /**
@@ -484,6 +528,8 @@ class ChunkTreeManager {
     } else {
       this.invalidateChunk()
     }
+
+    this.validateState()
   }
 
   /**
@@ -497,7 +543,7 @@ class ChunkTreeManager {
   }
 
   /**
-   * Insert leaves before the current leaf
+   * Insert leaves before the current leaf, leaving the pointer unchanged
    */
   private insertBefore(leaves: ChunkLeaf[]) {
     this.returnToPreviousLeaf()
@@ -506,7 +552,8 @@ class ChunkTreeManager {
   }
 
   /**
-   * Insert leaves after the current leaf
+   * Insert leaves after the current leaf, leaving the pointer on the last
+   * inserted leaf
    *
    * The insertion algorithm first checks for any chunk we're currently at the
    * end of that can receive additional leaves. Next, it tries to insert leaves
@@ -519,6 +566,9 @@ class ChunkTreeManager {
     /* istanbul ignore next */
     if (leaves.length === 0) return
 
+    let beforeDepth = 0
+    let afterDepth = 0
+
     // While at the end of a chunk, insert any leaves that will fit, and then
     // exit the chunk
     while (
@@ -528,8 +578,9 @@ class ChunkTreeManager {
       const remainingCapacity = this.chunkSize - this.pointerSiblings.length
       const toInsertCount = Math.min(remainingCapacity, leaves.length)
       const leavesToInsert = leaves.splice(0, toInsertCount)
-      this.pointerSiblings.push(...leavesToInsert)
+      this.rawInsertAfter(leavesToInsert, beforeDepth)
       this.exitChunk()
+      beforeDepth++
     }
 
     if (leaves.length === 0) return
@@ -559,29 +610,33 @@ class ChunkTreeManager {
         }
 
         this.exitChunk()
+        afterDepth++
       }
     }
+
+    this.restorePointer(rawInsertPointer)
 
     // If there are leaves left to insert, insert them between the end of the
     // previous chunk and the start of the first subsequent chunk, or wherever
     // the pointer ended up after the first batch of insertions
-    if (leaves.length > 0) {
-      this.restorePointer(rawInsertPointer)
-      this.rawInsertAfter(leaves)
-    }
+    const minDepth = Math.max(beforeDepth, afterDepth)
+    this.rawInsertAfter(leaves, minDepth)
 
     if (finalPointer) {
       this.restorePointer(finalPointer)
     }
+
+    this.validateState()
   }
 
   /**
-   * Insert leaves immediately after the current node, chunking them according
-   * to the number of nodes already in the parent plus the number of nodes
-   * being inserted
+   * Insert leaves immediately after the current node, leaving the pointer on
+   * the last inserted leaf
+   *
+   * Leaves are chunked according to the number of nodes already in the parent
+   * plus the number of nodes being inserted, or the minimum depth if larger
    */
-  private rawInsertAfter(leaves: ChunkLeaf[]) {
-    // istanbul ignore next
+  private rawInsertAfter(leaves: ChunkLeaf[], minDepth: number) {
     if (leaves.length === 0) return
 
     const groupIntoChunks = (
@@ -617,18 +672,22 @@ class ChunkTreeManager {
     // Determine the chunking depth based on the number of existing nodes in
     // the chunk and the number of nodes being inserted
     const newTotal = this.pointerSiblings.length + leaves.length
+    let depthForTotal = 0
 
-    // Find highest power of chunk size smaller than newTotal, min 1
-    let perChunk = this.chunkSize
-    while (perChunk < newTotal) {
-      perChunk *= this.chunkSize
+    for (let i = this.chunkSize; i < newTotal; i *= this.chunkSize) {
+      depthForTotal++
     }
-    perChunk /= this.chunkSize
 
-    const chunks = groupIntoChunks(leaves, this.root, perChunk)
+    // A depth of 0 means no chunking
+    const depth = Math.max(depthForTotal, minDepth)
+    const perTopLevelChunk = Math.pow(this.chunkSize, depth)
+
+    const chunks = groupIntoChunks(leaves, this.pointerChunk, perTopLevelChunk)
     this.pointerSiblings.splice(this.pointerIndex + 1, 0, ...chunks)
     this.pointerIndex += chunks.length
+    this.cachedPointerNode = undefined
     this.invalidateChunk()
+    this.validateState()
   }
 
   /**
@@ -651,6 +710,8 @@ class ChunkTreeManager {
         this.exitChunk()
       }
     }
+
+    this.validateState()
 
     // If the next sibling or aunt is a chunk, descend into it
     this.enterChunkUntilLeaf(false)
@@ -684,7 +745,58 @@ class ChunkTreeManager {
       }
     }
 
+    this.validateState()
+
     // If the previous sibling or aunt is a chunk, descend into it
     this.enterChunkUntilLeaf(true)
+  }
+
+  /**
+   * If debug mode is enabled, ensure that the state is internally consistent
+   */
+  // istanbul ignore next
+  private validateState() {
+    if (!this.debug) return
+
+    const validateDescendant = (node: ChunkDescendant) => {
+      if (node.type === 'chunk') {
+        const { parent, children } = node
+
+        if (!parent.children.includes(node)) {
+          throw new Error(
+            `Debug: Chunk ${node.key.id} has an incorrect parent property`
+          )
+        }
+
+        children.forEach(validateDescendant)
+      }
+    }
+
+    this.root.children.forEach(validateDescendant)
+
+    if (
+      this.cachedPointerNode !== undefined &&
+      this.cachedPointerNode !== this.getPointerNode()
+    ) {
+      throw new Error(
+        'Debug: The cached pointer is incorrect and has not been invalidated'
+      )
+    }
+
+    const actualIndexStack = this.getChunkPath(this.pointerChunk)
+
+    if (!actualIndexStack) {
+      throw new Error('Debug: The pointer chunk is not connected to the root')
+    }
+
+    if (!Path.equals(this.pointerIndexStack, actualIndexStack)) {
+      throw new Error(
+        `Debug: The cached index stack [${this.pointerIndexStack.join(
+          ', '
+        )}] does not match the path of the pointer chunk [${actualIndexStack.join(
+          ', '
+        )}]`
+      )
+    }
   }
 }
