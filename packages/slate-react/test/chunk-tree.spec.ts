@@ -386,7 +386,7 @@ describe('getChunkTreeForNode', () => {
             ['3', '4', '5'],
             ['6', '7', '8'],
           ],
-          ['9', ['10', '11', 'a'], 'b'],
+          [['9'], ['10', '11', 'a'], 'b'],
           'c',
         ])
       })
@@ -410,7 +410,7 @@ describe('getChunkTreeForNode', () => {
           expect(getTreeShape(chunkTree)).toEqual([
             'a',
             [['0']],
-            ['1', ['2', 'b', 'c'], 'd'],
+            [['1'], ['2', 'b', 'c'], 'd'],
             'e',
           ])
         })
@@ -450,7 +450,7 @@ describe('getChunkTreeForNode', () => {
           const chunkTree = reconcileEditor(editor)
 
           expect(getTreeShape(chunkTree)).toEqual([
-            ['a', [['0']], ['1', ['2', 'b', 'c'], 'd'], 'e'],
+            ['a', [['0']], [['1'], ['2', 'b', 'c'], 'd'], 'e'],
           ])
         })
       })
@@ -488,7 +488,7 @@ describe('getChunkTreeForNode', () => {
                   ['10', '11', '12'],
                 ],
               ],
-              ['13', ['14', ['15', '16', 'd'], 'e'], 'f'],
+              [[['13']], [['14'], ['15', '16', 'd'], 'e'], 'f'],
             ],
           ])
         })
