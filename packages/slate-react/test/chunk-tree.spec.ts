@@ -247,6 +247,38 @@ describe('getChunkTreeForNode', () => {
           [[['27']]],
         ])
       })
+
+      it.skip('inserts nodes one by one', () => {
+        const editor = createEditorWithShape([])
+        let chunkTree: ChunkTree
+
+        blocks(31).forEach((node, i) => {
+          Transforms.insertNodes(editor, node, { at: [i] })
+
+          chunkTree = getChunkTreeForNode(editor, editor, {
+            reconcile: true,
+            chunkSize: 3,
+          })
+        })
+
+        expect(getTreeShape(chunkTree!)).toEqual([
+          '0',
+          '1',
+          '2',
+          ['3', '4', '5'],
+          ['6', '7', '8'],
+          ['9', '10', '11'],
+          ['12', '13', '14'],
+          ['15', '16', '17'],
+          ['18', '19', '20'],
+          [
+            ['21', '22', '23'],
+            ['24', '25', '26'],
+            ['27', '28', '29'],
+          ],
+          [['30']],
+        ])
+      })
     })
 
     describe('at end of editor', () => {
@@ -318,17 +350,13 @@ describe('getChunkTreeForNode', () => {
             ['12', '13', '14'],
             ['15', '16', '17'],
           ],
-          [
-            ['18', '19', '20'],
-            ['21', '22', '23'],
-            ['24'],
-          ],
+          [['18', '19', '20'], ['21', '22', '23'], ['24']],
         ])
       })
 
-      it('inserts 26 nodes after 2 nodes with 3 layers of chunking', () => {
-        const editor = createEditorWithShape(['a', 'b'])
-        Transforms.insertNodes(editor, blocks(26), { at: [2] })
+      it('inserts 25 nodes after 3 nodes with 3 layers of chunking', () => {
+        const editor = createEditorWithShape(['a', 'b', 'c'])
+        Transforms.insertNodes(editor, blocks(25), { at: [3] })
 
         const chunkTree = getChunkTreeForNode(editor, editor, {
           reconcile: true,
@@ -338,6 +366,7 @@ describe('getChunkTreeForNode', () => {
         expect(getTreeShape(chunkTree)).toEqual([
           'a',
           'b',
+          'c',
           [
             [
               ['0', '1', '2'],
@@ -349,11 +378,27 @@ describe('getChunkTreeForNode', () => {
               ['12', '13', '14'],
               ['15', '16', '17'],
             ],
-            [
-              ['18', '19', '20'],
-              ['21', '22', '23'],
-              ['24', '25'],
-            ],
+            [['18', '19', '20'], ['21', '22', '23'], ['24']],
+          ],
+        ])
+      })
+
+      it('inserts many nodes at the ends of multiple nested chunks', () => {
+        const editor = createEditorWithShape(['a', ['b', ['c']]])
+        Transforms.insertNodes(editor, blocks(12), { at: [3] })
+
+        const chunkTree = getChunkTreeForNode(editor, editor, {
+          reconcile: true,
+          chunkSize: 3,
+        })
+
+        expect(getTreeShape(chunkTree)).toEqual([
+          'a',
+          ['b', ['c', '0', '1'], '2'],
+          [
+            ['3', '4', '5'],
+            ['6', '7', '8'],
+            ['9', '10', '11'],
           ],
         ])
       })
@@ -371,6 +416,26 @@ describe('getChunkTreeForNode', () => {
 
         expect(getTreeShape(chunkTree)).toEqual(['x', '0', '1'])
       })
+
+      it('inserts many nodes at the starts of multiple nested chunks', () => {
+        const editor = createEditorWithShape([[['a'], 'b'], 'c'])
+        Transforms.insertNodes(editor, blocks(12), { at: [0] })
+
+        const chunkTree = getChunkTreeForNode(editor, editor, {
+          reconcile: true,
+          chunkSize: 3,
+        })
+
+        expect(getTreeShape(chunkTree)).toEqual([
+          [
+            ['0', '1', '2'],
+            ['3', '4', '5'],
+            ['6', '7', '8'],
+          ],
+          ['9', ['10', '11', 'a'], 'b'],
+          'c',
+        ])
+      })
     })
 
     describe('in the middle of editor', () => {
@@ -385,6 +450,23 @@ describe('getChunkTreeForNode', () => {
           })
 
           expect(getTreeShape(chunkTree)).toEqual(['0', 'x', '1'])
+        })
+
+        it('inserts nodes at the start of subsequent sibling chunks', () => {
+          const editor = createEditorWithShape(['a', [['b', 'c'], 'd'], 'e'])
+          Transforms.insertNodes(editor, blocks(3), { at: [1] })
+
+          const chunkTree = getChunkTreeForNode(editor, editor, {
+            reconcile: true,
+            chunkSize: 3,
+          })
+
+          expect(getTreeShape(chunkTree)).toEqual([
+            'a',
+            ['0'],
+            ['1', ['2', 'b', 'c'], 'd'],
+            'e',
+          ])
         })
       })
 
@@ -410,15 +492,33 @@ describe('getChunkTreeForNode', () => {
             chunkSize: 3,
           })
 
-          expect(getTreeShape(chunkTree)).toEqual([[[
-            'a',
+          expect(getTreeShape(chunkTree)).toEqual([
             [
-              ['0', '1', '2'],
-              ['3', '4', '5'],
-              ['6', '7'],
+              [
+                'a',
+                [
+                  ['0', '1', '2'],
+                  ['3', '4', '5'],
+                  ['6', '7'],
+                ],
+                'b',
+              ],
             ],
-            'b',
-          ]]])
+          ])
+        })
+
+        it('inserts nodes at the start of subsequent sibling chunks', () => {
+          const editor = createEditorWithShape([['a', [['b', 'c'], 'd'], 'e']])
+          Transforms.insertNodes(editor, blocks(3), { at: [1] })
+
+          const chunkTree = getChunkTreeForNode(editor, editor, {
+            reconcile: true,
+            chunkSize: 3,
+          })
+
+          expect(getTreeShape(chunkTree)).toEqual([
+            ['a', ['0'], ['1', ['2', 'b', 'c'], 'd'], 'e'],
+          ])
         })
       })
 
@@ -437,6 +537,34 @@ describe('getChunkTreeForNode', () => {
             ['1', 'c'],
           ])
         })
+
+        it('inserts nodes in many adjacent nested chunks', () => {
+          const editor = createEditorWithShape([
+            [
+              ['a', ['b', ['c']]],
+              [[['d'], 'e'], 'f'],
+            ],
+          ])
+
+          Transforms.insertNodes(editor, blocks(17), { at: [3] })
+
+          const chunkTree = getChunkTreeForNode(editor, editor, {
+            reconcile: true,
+            chunkSize: 3,
+          })
+
+          expect(getTreeShape(chunkTree)).toEqual([
+            [
+              ['a', ['b', ['c', '0', '1'], '2'], '3'],
+              [
+                ['4', '5', '6'],
+                ['7', '8', '9'],
+                ['10', '11', '12'],
+              ],
+              ['13', ['14', ['15', '16', 'd'], 'e'], 'f'],
+            ],
+          ])
+        })
       })
     })
   })
@@ -453,7 +581,7 @@ describe('getChunkTreeForNode', () => {
 
       expect(getTreeShape(chunkTree)).toEqual(['0', '2'])
     })
-  });
+  })
 
   describe('updating nodes', () => {
     it('invalidates ancestor chunks of updated slate nodes', () => {

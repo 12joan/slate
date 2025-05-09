@@ -50,10 +50,12 @@ export type ChunkNode = ChunkTree | Chunk | ChunkLeaf
 
 type ChildEntry = [Element, Key]
 
-type SavedPointer = 'start' | {
-  chunk: ChunkAncestor
-  node: ChunkDescendant
-}
+type SavedPointer =
+  | 'start'
+  | {
+      chunk: ChunkAncestor
+      node: ChunkDescendant
+    }
 
 const childEntryToLeaf = ([node, key]: ChildEntry): ChunkLeaf => ({
   type: 'leaf',
@@ -73,10 +75,12 @@ export const NODE_TO_CHUNK_TREE = new WeakMap<Ancestor, ChunkTree>()
 export const getChunkTreeForNode = (
   editor: Editor,
   node: Ancestor,
-  options: {
-    reconcile: true
-    chunkSize: number
-  } | { reconcile?: false } = {}
+  options:
+    | {
+        reconcile: true
+        chunkSize: number
+      }
+    | { reconcile?: false } = {}
 ) => {
   let chunkTree = NODE_TO_CHUNK_TREE.get(node)
 
@@ -385,17 +389,21 @@ class ChunkTreeManager {
 
     // istanbul ignore next
     if (index === -1) {
-      throw new Error('Cannot restore point because saved node is no longer in saved chunk')
+      throw new Error(
+        'Cannot restore point because saved node is no longer in saved chunk'
+      )
     }
 
-    let indexStack: number[] = []
+    const indexStack: number[] = []
 
     for (let c = chunk; c.type === 'chunk'; c = c.parent) {
       const chunkIndex = c.parent.children.indexOf(c)
 
       // istanbul ignore next
       if (chunkIndex === -1) {
-        throw new Error('Cannot restore point because saved chunk is no longer connected to root')
+        throw new Error(
+          'Cannot restore point because saved chunk is no longer connected to root'
+        )
       }
 
       indexStack.unshift(chunkIndex)
@@ -538,10 +546,7 @@ class ChunkTreeManager {
     if (this.readLeaf()) {
       // While at the start of a chunk, insert any leaves that will fit, and
       // then exit the chunk
-      while (
-        this.pointerChunk.type === 'chunk' &&
-        this.pointerIndex === 0
-      ) {
+      while (this.pointerChunk.type === 'chunk' && this.pointerIndex === 0) {
         const remainingCapacity = this.chunkSize - this.pointerSiblings.length
         const toInsertCount = Math.min(remainingCapacity, leaves.length)
         const leavesToInsert = leaves.splice(-toInsertCount, toInsertCount)
@@ -582,7 +587,7 @@ class ChunkTreeManager {
     const groupIntoChunks = (
       leaves: ChunkLeaf[],
       parent: ChunkAncestor,
-      perChunk: number,
+      perChunk: number
     ): ChunkDescendant[] => {
       if (perChunk === 1) return leaves
       const chunks: Chunk[] = []
@@ -598,7 +603,11 @@ class ChunkTreeManager {
           children: [],
         }
 
-        chunk.children = groupIntoChunks(chunkNodes, chunk, perChunk / this.chunkSize)
+        chunk.children = groupIntoChunks(
+          chunkNodes,
+          chunk,
+          perChunk / this.chunkSize
+        )
         chunks.push(chunk)
       }
 
