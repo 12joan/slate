@@ -65,6 +65,11 @@ const childEntryToLeaf = ([node, key]: ChildEntry): ChunkLeaf => ({
 
 export const NODE_TO_CHUNK_TREE = new WeakMap<Ancestor, ChunkTree>()
 
+interface ReconcileOptions {
+  chunkSize: number
+  debug?: boolean
+}
+
 /**
  * Get or create the chunk tree for a Slate node
  *
@@ -76,13 +81,9 @@ export const getChunkTreeForNode = (
   editor: Editor,
   node: Ancestor,
   // istanbul ignore next
-  options:
-    | {
-        reconcile: true
-        chunkSize: number
-        debug?: boolean
-      }
-    | { reconcile?: false } = {}
+  options: {
+    reconcile?: ReconcileOptions | false
+  } = {}
 ) => {
   let chunkTree = NODE_TO_CHUNK_TREE.get(node)
 
@@ -99,12 +100,7 @@ export const getChunkTreeForNode = (
 
   if (options.reconcile) {
     chunkTree.modifiedChunks.clear()
-    const manager = new ChunkTreeManager(
-      editor,
-      chunkTree,
-      options.chunkSize,
-      options.debug
-    )
+    const manager = new ChunkTreeManager(editor, chunkTree, options.reconcile)
     manager.reconcile(node.children as Element[])
     chunkTree.movedNodeKeys.clear()
   }
@@ -176,17 +172,12 @@ class ChunkTreeManager {
    */
   private cachedPointerNode: ChunkDescendant | null | undefined
 
-  constructor(
-    editor: Editor,
-    chunkTree: ChunkTree,
-    chunkSize: number,
-    // istanbul ignore next
-    debug: boolean = false
-  ) {
+  constructor(editor: Editor, chunkTree: ChunkTree, options: ReconcileOptions) {
     this.editor = editor
     this.root = chunkTree
-    this.chunkSize = chunkSize
-    this.debug = debug
+    this.chunkSize = options.chunkSize
+    // istanbul ignore next
+    this.debug = options.debug ?? false
     this.pointerChunk = chunkTree
     this.pointerIndex = -1
     this.pointerIndexStack = []

@@ -24,9 +24,10 @@ const blocks = (count: number) =>
 
 const reconcileEditor = (editor: ReactEditor) =>
   getChunkTreeForNode(editor, editor, {
-    reconcile: true,
-    chunkSize: 3,
-    debug: true,
+    reconcile: {
+      chunkSize: 3,
+      debug: true,
+    },
   })
 
 type TreeShape = string | TreeShape[]

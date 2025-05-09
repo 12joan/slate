@@ -136,8 +136,7 @@ const useChildren = (props: {
   // }
 
   const chunkTree = getChunkTreeForNode(editor, node, {
-    reconcile: true,
-    chunkSize,
+    reconcile: { chunkSize },
   })
 
   return (
