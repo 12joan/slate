@@ -102,6 +102,18 @@ export interface RenderElementProps {
 }
 
 /**
+ * `RenderChunkProps` are passed to the `renderChunk` handler
+ */
+export interface RenderChunkProps {
+  highest: boolean
+  lowest: boolean
+  children: any
+  attributes: {
+    'data-slate-chunk': true
+  }
+}
+
+/**
  * `RenderLeafProps` are passed to the `renderLeaf` handler.
  */
 
@@ -146,6 +158,7 @@ export type EditableProps = {
   role?: string
   style?: React.CSSProperties
   renderElement?: (props: RenderElementProps) => JSX.Element
+  renderChunk?: (props: RenderChunkProps) => JSX.Element
   renderLeaf?: (props: RenderLeafProps) => JSX.Element
   renderText?: (props: RenderTextProps) => JSX.Element
   renderPlaceholder?: (props: RenderPlaceholderProps) => JSX.Element
@@ -171,6 +184,7 @@ export const Editable = forwardRef(
       placeholder,
       readOnly = false,
       renderElement,
+      renderChunk,
       renderLeaf,
       renderText,
       renderPlaceholder = defaultRenderPlaceholder,
@@ -1853,6 +1867,7 @@ export const Editable = forwardRef(
                   decorations={decorations}
                   node={editor}
                   renderElement={renderElement}
+                  renderChunk={renderChunk}
                   renderPlaceholder={renderPlaceholder}
                   renderLeaf={renderLeaf}
                   renderText={renderText}

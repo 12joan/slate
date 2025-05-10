@@ -10,6 +10,10 @@ body {
   margin: 0;
 }
 
+h1 {
+  margin-top: 0;
+}
+
 p {
   margin: 0;
 }
@@ -77,7 +81,12 @@ iframe {
   border: 1px solid #eee;
 }
 
-[data-slate-editor] > * + * {
+details > summary {
+  user-select: none;
+}
+
+[data-slate-editor] > * + *,
+[data-slate-chunk] > * + * {
   margin-top: 1em;
 }
 
@@ -92,7 +101,7 @@ iframe {
   white-space: pre-wrap;
 }
 
-.debug-ui {
+.performance-controls {
   padding: 20px;
   margin: -20px -20px 20px -20px;
   background-color: white;
@@ -100,4 +109,16 @@ iframe {
   top: 0;
   z-index: 1;
   border-bottom: 1px solid lightgrey;
+}
+
+.performance-controls > * {
+  margin-top: 10px;
+}
+
+.performance-controls > details > :not(summary) {
+  margin-left: 10px;
+}
+
+.performance-controls p {
+  margin-top: 5px;
 }

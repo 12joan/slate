@@ -1,7 +1,8 @@
-import React, { useCallback } from 'react'
+import React, { Fragment, useCallback } from 'react'
 import { Ancestor, Editor, Element, DecoratedRange, Text } from 'slate'
 import { Key } from 'slate-dom'
 import {
+  RenderChunkProps,
   RenderElementProps,
   RenderLeafProps,
   RenderPlaceholderProps,
@@ -29,6 +30,7 @@ const useChildren = (props: {
   decorations: DecoratedRange[]
   node: Ancestor
   renderElement?: (props: RenderElementProps) => JSX.Element
+  renderChunk?: (props: RenderChunkProps) => JSX.Element
   renderPlaceholder: (props: RenderPlaceholderProps) => JSX.Element
   renderText?: (props: RenderTextProps) => JSX.Element
   renderLeaf?: (props: RenderLeafProps) => JSX.Element
@@ -37,6 +39,7 @@ const useChildren = (props: {
     decorations,
     node,
     renderElement,
+    renderChunk,
     renderPlaceholder,
     renderText,
     renderLeaf,
@@ -65,6 +68,7 @@ const useChildren = (props: {
             element={n}
             key={key.id}
             renderElement={renderElement}
+            renderChunk={renderChunk}
             renderPlaceholder={renderPlaceholder}
             renderLeaf={renderLeaf}
             renderText={renderText}
@@ -72,7 +76,14 @@ const useChildren = (props: {
         </SelectedContext.Provider>
       )
     },
-    [editor, renderElement, renderPlaceholder, renderLeaf, renderText]
+    [
+      editor,
+      renderElement,
+      renderChunk,
+      renderPlaceholder,
+      renderLeaf,
+      renderText,
+    ]
   )
 
   const renderTextComponent = (n: Text, i: number) => {
@@ -121,39 +132,51 @@ const useChildren = (props: {
   return (
     <ChunkTree
       root={chunkTree}
-      chunk={chunkTree}
+      ancestor={chunkTree}
       renderElement={renderElementComponent}
+      renderChunk={renderChunk}
     />
   )
 }
 
+const defaultRenderChunk = ({ children }: RenderChunkProps) => children
+
 const ChunkAncestor = <C extends ChunkAncestorType>(props: {
   root: ChunkTreeType
-  chunk: C
+  ancestor: C
   renderElement: (node: Element, key: Key) => JSX.Element
+  renderChunk?: (props: RenderChunkProps) => JSX.Element
 }) => {
-  const { root, chunk, renderElement } = props
+  const {
+    root,
+    ancestor,
+    renderElement,
+    renderChunk = defaultRenderChunk,
+  } = props
 
-  return chunk.children.map(chunkNode =>
-    chunkNode.type === 'chunk' ? (
-      <div
-        key={chunkNode.key.id}
-        style={
-          chunkNode.children.some(c => c.type === 'leaf')
-            ? { contentVisibility: 'auto' }
-            : {}
-        }
-      >
-        <MemoizedChunk
-          root={root}
-          chunk={chunkNode}
-          renderElement={renderElement}
-        />
-      </div>
-    ) : (
-      renderElement(chunkNode.node, chunkNode.key)
-    )
-  )
+  return ancestor.children.map(chunkNode => {
+    if (chunkNode.type === 'chunk') {
+      const key = chunkNode.key.id
+
+      const renderedChunk = renderChunk({
+        highest: ancestor === root,
+        lowest: chunkNode.children.some(c => c.type === 'leaf'),
+        attributes: { 'data-slate-chunk': true },
+        children: (
+          <MemoizedChunk
+            root={root}
+            ancestor={chunkNode}
+            renderElement={renderElement}
+            renderChunk={renderChunk}
+          />
+        ),
+      })
+
+      return <Fragment key={key}>{renderedChunk}</Fragment>
+    }
+
+    return renderElement(chunkNode.node, chunkNode.key)
+  })
 }
 
 const ChunkTree = ChunkAncestor<ChunkTreeType>
@@ -163,7 +186,8 @@ const MemoizedChunk = React.memo(
   (prev, next) =>
     prev.root === next.root &&
     prev.renderElement === next.renderElement &&
-    !next.root.modifiedChunks.has(next.chunk)
+    prev.renderChunk === next.renderChunk &&
+    !next.root.modifiedChunks.has(next.ancestor)
 )
 
 export default useChildren
