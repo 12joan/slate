@@ -20,7 +20,7 @@ import {
   type ChunkAncestor as ChunkAncestorType,
   type ChunkTree as ChunkTreeType,
   getChunkTreeForNode,
-} from '../components/chunking/chunk-tree'
+} from '../chunking'
 
 /**
  * Children.
@@ -175,7 +175,10 @@ const ChunkAncestor = <C extends ChunkAncestorType>(props: {
       return <Fragment key={key}>{renderedChunk}</Fragment>
     }
 
-    return renderElement(chunkNode.node, chunkNode.key)
+    // Only blocks containing no inlines are chunked
+    const element = chunkNode.node as Element
+
+    return renderElement(element, chunkNode.key)
   })
 }
 

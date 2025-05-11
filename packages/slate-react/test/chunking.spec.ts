@@ -1,4 +1,4 @@
-import { Element, Node, Transforms, createEditor } from 'slate'
+import { Descendant, Element, Node, Transforms, createEditor } from 'slate'
 import { Key } from 'slate-dom'
 import { ReactEditor, withReact } from '../src'
 import {
@@ -8,9 +8,9 @@ import {
   ChunkLeaf,
   ChunkNode,
   ChunkTree,
-  NODE_TO_CHUNK_TREE,
+  KEY_TO_CHUNK_TREE,
   getChunkTreeForNode,
-} from '../src/components/chunking/chunk-tree'
+} from '../src/chunking'
 
 const block = (text: string): Element => ({ children: [{ text }] })
 
@@ -43,8 +43,8 @@ const getTreeShape = (chunkNode: ChunkNode): TreeShape => {
 const getChildrenAndTreeForShape = (
   editor: ReactEditor,
   treeShape: TreeShape[]
-): { children: Element[]; chunkTree: ChunkTree } => {
-  const children: Element[] = []
+): { children: Descendant[]; chunkTree: ChunkTree } => {
+  const children: Descendant[] = []
 
   const shapeToNode = (
     ts: TreeShape,
@@ -89,7 +89,8 @@ const createEditorWithShape = (treeShape: TreeShape[]) => {
   const editor = withReact(createEditor())
   const { children, chunkTree } = getChildrenAndTreeForShape(editor, treeShape)
   editor.children = children
-  NODE_TO_CHUNK_TREE.set(editor, chunkTree)
+  const key = ReactEditor.findKey(editor, editor)
+  KEY_TO_CHUNK_TREE.set(key, chunkTree)
   return editor
 }
 
@@ -685,7 +686,7 @@ describe('getChunkTreeForNode', () => {
           }
 
           const chunkTree = reconcileEditor(editor)
-          const chunkTreeSlateNodes: Element[] = []
+          const chunkTreeSlateNodes: Descendant[] = []
 
           const flattenTree = (node: ChunkNode) => {
             if (node.type === 'leaf') {
