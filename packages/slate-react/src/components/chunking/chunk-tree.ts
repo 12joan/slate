@@ -63,7 +63,7 @@ const childEntryToLeaf = ([node, key]: ChildEntry): ChunkLeaf => ({
   node,
 })
 
-export const NODE_TO_CHUNK_TREE = new WeakMap<Ancestor, ChunkTree>()
+export const KEY_TO_CHUNK_TREE = new WeakMap<Key, ChunkTree>()
 
 interface ReconcileOptions {
   chunkSize: number
@@ -85,7 +85,8 @@ export const getChunkTreeForNode = (
     reconcile?: ReconcileOptions | false
   } = {}
 ) => {
-  let chunkTree = NODE_TO_CHUNK_TREE.get(node)
+  const key = ReactEditor.findKey(editor, node)
+  let chunkTree = KEY_TO_CHUNK_TREE.get(key)
 
   if (!chunkTree) {
     chunkTree = {
@@ -95,7 +96,7 @@ export const getChunkTreeForNode = (
       children: [],
     }
 
-    NODE_TO_CHUNK_TREE.set(node, chunkTree)
+    KEY_TO_CHUNK_TREE.set(key, chunkTree)
   }
 
   if (options.reconcile) {
