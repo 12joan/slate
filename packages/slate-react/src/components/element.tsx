@@ -5,7 +5,6 @@ import {
   Editor,
   Element as SlateElement,
   Node,
-  Range,
   DecoratedRange,
 } from 'slate'
 import { ReactEditor, useReadOnly, useSlateStatic } from '..'

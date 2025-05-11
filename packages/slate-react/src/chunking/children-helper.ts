@@ -1,7 +1,7 @@
 import { Editor, Descendant } from 'slate'
-import { ReactEditor } from '../plugin/react-editor'
 import { Key } from 'slate-dom'
 import { ChunkLeaf } from './types'
+import { ReactEditor } from '../plugin/react-editor'
 
 export class ChildrenHelper {
   private editor: Editor

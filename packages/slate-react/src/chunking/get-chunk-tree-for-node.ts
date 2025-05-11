@@ -1,8 +1,8 @@
 import { Ancestor, Editor } from 'slate'
-import { ReactEditor } from '../plugin/react-editor'
 import { Key } from 'slate-dom'
 import { ChunkTree } from './types'
 import { ReconcileOptions, reconcileChildren } from './reconcile-children'
+import { ReactEditor } from '../plugin/react-editor'
 
 export const KEY_TO_CHUNK_TREE = new WeakMap<Key, ChunkTree>()
 

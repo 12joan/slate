@@ -1,4 +1,4 @@
-import React, { Fragment, useCallback } from 'react'
+import React, { useCallback } from 'react'
 import { Ancestor, Editor, Element, DecoratedRange, Text } from 'slate'
 import { Key } from 'slate-dom'
 import {
@@ -15,12 +15,8 @@ import { ReactEditor } from '../plugin/react-editor'
 import { IS_NODE_MAP_DIRTY, NODE_TO_INDEX, NODE_TO_PARENT } from 'slate-dom'
 import { SelectedContext } from './use-selected'
 import { useSlateStatic } from './use-slate-static'
-import {
-  type Chunk as ChunkType,
-  type ChunkAncestor as ChunkAncestorType,
-  type ChunkTree as ChunkTreeType,
-  getChunkTreeForNode,
-} from '../chunking'
+import { getChunkTreeForNode } from '../chunking'
+import ChunkTree from '../components/chunk-tree'
 
 /**
  * Children.
@@ -138,59 +134,5 @@ const useChildren = (props: {
     />
   )
 }
-
-const defaultRenderChunk = ({ children }: RenderChunkProps) => children
-
-const ChunkAncestor = <C extends ChunkAncestorType>(props: {
-  root: ChunkTreeType
-  ancestor: C
-  renderElement: (node: Element, key: Key) => JSX.Element
-  renderChunk?: (props: RenderChunkProps) => JSX.Element
-}) => {
-  const {
-    root,
-    ancestor,
-    renderElement,
-    renderChunk = defaultRenderChunk,
-  } = props
-
-  return ancestor.children.map(chunkNode => {
-    if (chunkNode.type === 'chunk') {
-      const key = chunkNode.key.id
-
-      const renderedChunk = renderChunk({
-        highest: ancestor === root,
-        lowest: chunkNode.children.some(c => c.type === 'leaf'),
-        attributes: { 'data-slate-chunk': true },
-        children: (
-          <MemoizedChunk
-            root={root}
-            ancestor={chunkNode}
-            renderElement={renderElement}
-            renderChunk={renderChunk}
-          />
-        ),
-      })
-
-      return <Fragment key={key}>{renderedChunk}</Fragment>
-    }
-
-    // Only blocks containing no inlines are chunked
-    const element = chunkNode.node as Element
-
-    return renderElement(element, chunkNode.key)
-  })
-}
-
-const ChunkTree = ChunkAncestor<ChunkTreeType>
-
-const MemoizedChunk = React.memo(
-  ChunkAncestor<ChunkType>,
-  (prev, next) =>
-    prev.root === next.root &&
-    prev.renderElement === next.renderElement &&
-    prev.renderChunk === next.renderChunk &&
-    !next.root.modifiedChunks.has(next.ancestor)
-)
 
 export default useChildren
