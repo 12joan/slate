@@ -7,6 +7,9 @@ export interface ReconcileOptions extends ChunkTreeHelperOptions {
   chunkTree: ChunkTree
   children: Descendant[]
   chunkSize: number
+  onInsert?: (node: Descendant, index: number) => void
+  onUpdate?: (node: Descendant, index: number) => void
+  onIndexChange?: (node: Descendant, index: number) => void
   debug?: boolean
 }
 
@@ -16,12 +19,24 @@ export interface ReconcileOptions extends ChunkTreeHelperOptions {
  */
 export const reconcileChildren = (
   editor: Editor,
-  { chunkTree, children, chunkSize, debug }: ReconcileOptions
+  {
+    chunkTree,
+    children,
+    chunkSize,
+    onInsert,
+    onUpdate,
+    onIndexChange,
+    debug,
+  }: ReconcileOptions
 ) => {
   chunkTree.modifiedChunks.clear()
 
   const chunkTreeHelper = new ChunkTreeHelper(chunkTree, { chunkSize, debug })
   const childrenHelper = new ChildrenHelper(editor, children)
+
+  // Track the number of insertions and removals to work out whether each
+  // node's index has changed
+  let insertionsMinusRemovals = 0
 
   let treeLeaf: ChunkLeaf | null
 
@@ -40,6 +55,7 @@ export const reconcileChildren = (
     // If the tree leaf is not present in children, remove it
     if (lookAhead === -1) {
       chunkTreeHelper.remove()
+      insertionsMinusRemovals--
       continue
     }
 
@@ -56,13 +72,28 @@ export const reconcileChildren = (
       )
 
       chunkTreeHelper.insertBefore(leavesToInsert)
+
+      insertedChildren.forEach((node, relativeIndex) => {
+        onInsert?.(node, insertedChildrenStartIndex + relativeIndex)
+      })
+
+      insertionsMinusRemovals += insertedChildren.length
     }
+
+    const matchingChildIndex = childrenHelper.pointerIndex - 1
 
     // Make sure the chunk tree contains the most recent version of the Slate
     // node
     if (treeLeaf.node !== matchingChild) {
       treeLeaf.node = matchingChild
       chunkTreeHelper.invalidateChunk()
+      onUpdate?.(matchingChild, matchingChildIndex)
+    }
+
+    // If an unequal number of previous nodes were inserted and removed, the
+    // current node's index must have changed
+    if (insertionsMinusRemovals !== 0) {
+      onIndexChange?.(matchingChild, matchingChildIndex)
     }
   }
 
@@ -81,6 +112,10 @@ export const reconcileChildren = (
     chunkTreeHelper.returnToPreviousLeaf()
 
     chunkTreeHelper.insertAfter(leavesToInsert)
+
+    remainingChildren.forEach((node, relativeIndex) => {
+      onInsert?.(node, childrenHelper.pointerIndex + relativeIndex)
+    })
   }
 
   chunkTree.movedNodeKeys.clear()

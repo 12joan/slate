@@ -47,11 +47,18 @@ const useChildren = (props: {
   const isEditor = Editor.isEditor(node)
   const isBlock = !isEditor && Element.isElement(node) && !editor.isInline(node)
   const isLeafBlock = isBlock && Editor.hasInlines(editor, node)
+  const chunkSize = isLeafBlock ? null : editor.getChunkSize(node)
+  const chunking = !!chunkSize
 
-  node.children.forEach((n, i) => {
-    NODE_TO_INDEX.set(n, i)
-    NODE_TO_PARENT.set(n, node)
-  })
+  // Update the index and parent of each child.
+  // PERF: If chunking is enabled, this is done while traversing the chunk tree
+  // to eliminate unnecessary weak map operations.
+  if (!chunking) {
+    node.children.forEach((n, i) => {
+      NODE_TO_INDEX.set(n, i)
+      NODE_TO_PARENT.set(n, node)
+    })
+  }
 
   const renderElementComponent = useCallback(
     (n: Element, cachedKey?: Key) => {
@@ -99,9 +106,7 @@ const useChildren = (props: {
     )
   }
 
-  const chunkSize = isLeafBlock ? null : editor.getChunkSize(node)
-
-  if (!chunkSize) {
+  if (!chunking) {
     return node.children.map((n, i) =>
       Text.isText(n) ? renderTextComponent(n, i) : renderElementComponent(n)
     )
@@ -122,7 +127,20 @@ const useChildren = (props: {
   // }
 
   const chunkTree = getChunkTreeForNode(editor, node, {
-    reconcile: { chunkSize },
+    reconcile: {
+      chunkSize,
+      onInsert: (n, i) => {
+        NODE_TO_INDEX.set(n, i)
+        NODE_TO_PARENT.set(n, node)
+      },
+      onUpdate: (n, i) => {
+        NODE_TO_INDEX.set(n, i)
+        NODE_TO_PARENT.set(n, node)
+      },
+      onIndexChange: (n, i) => {
+        NODE_TO_INDEX.set(n, i)
+      },
+    },
   })
 
   return (

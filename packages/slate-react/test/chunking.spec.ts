@@ -11,6 +11,7 @@ import {
   KEY_TO_CHUNK_TREE,
   getChunkTreeForNode,
 } from '../src/chunking'
+import { ReconcileOptions } from '../src/chunking/reconcile-children'
 
 const block = (text: string): Element => ({ children: [{ text }] })
 
@@ -22,11 +23,15 @@ const blocks = (count: number) =>
     (_, i) => block(i.toString())
   )
 
-const reconcileEditor = (editor: ReactEditor) =>
+const reconcileEditor = (
+  editor: ReactEditor,
+  options: Omit<ReconcileOptions, 'chunkTree' | 'children' | 'chunkSize'> = {}
+) =>
   getChunkTreeForNode(editor, editor, {
     reconcile: {
       chunkSize: 3,
       debug: true,
+      ...options,
     },
   })
 
@@ -94,6 +99,7 @@ const createEditorWithShape = (treeShape: TreeShape[]) => {
   return editor
 }
 
+// https://stackoverflow.com/a/29450606
 const createPRNG = (seed: number) => {
   const mask = 0xffffffff
   let m_w = (123456789 + seed) & mask
@@ -193,6 +199,20 @@ describe('getChunkTreeForNode', () => {
           ],
         ],
         [[['27']]],
+      ])
+    })
+
+    it('calls onInsert for initial children', () => {
+      const editor = withReact(createEditor())
+      editor.children = blocks(3)
+
+      const onInsert = jest.fn()
+      reconcileEditor(editor, { onInsert })
+
+      expect(onInsert.mock.calls).toEqual([
+        [editor.children[0], 0],
+        [editor.children[1], 1],
+        [editor.children[2], 2],
       ])
     })
   })
@@ -413,6 +433,19 @@ describe('getChunkTreeForNode', () => {
           ],
         ])
       })
+
+      it('calls onInsert for inserted nodes', () => {
+        const editor = createEditorWithShape(['a', 'b', 'c'])
+        Transforms.insertNodes(editor, blocks(2), { at: [3] })
+
+        const onInsert = jest.fn()
+        reconcileEditor(editor, { onInsert })
+
+        expect(onInsert.mock.calls).toEqual([
+          [editor.children[3], 3],
+          [editor.children[4], 4],
+        ])
+      })
     })
 
     describe('at start of editor', () => {
@@ -460,6 +493,32 @@ describe('getChunkTreeForNode', () => {
             [['0']],
             [['1'], ['2', 'b', 'c'], 'd'],
             'e',
+          ])
+        })
+
+        it('calls onInsert for inserted nodes', () => {
+          const editor = createEditorWithShape(['a', 'b', 'c'])
+          Transforms.insertNodes(editor, blocks(2), { at: [1] })
+
+          const onInsert = jest.fn()
+          reconcileEditor(editor, { onInsert })
+
+          expect(onInsert.mock.calls).toEqual([
+            [editor.children[1], 1],
+            [editor.children[2], 2],
+          ])
+        })
+
+        it('calls onIndexChange for subsequent nodes', () => {
+          const editor = createEditorWithShape(['a', 'b', 'c'])
+          Transforms.insertNodes(editor, blocks(2), { at: [1] })
+
+          const onIndexChange = jest.fn()
+          reconcileEditor(editor, { onIndexChange })
+
+          expect(onIndexChange.mock.calls).toEqual([
+            [editor.children[3], 3],
+            [editor.children[4], 4],
           ])
         })
       })
@@ -567,6 +626,19 @@ describe('getChunkTreeForNode', () => {
       const chunkTree = reconcileEditor(editor)
       expect(getTreeShape(chunkTree)).toEqual(['0', ['2'], '4'])
     })
+
+    it('calls onIndexChange for subsequent nodes', () => {
+      const editor = createEditorWithShape(['a', 'b', 'c', 'd'])
+      Transforms.removeNodes(editor, { at: [1] })
+
+      const onIndexChange = jest.fn()
+      reconcileEditor(editor, { onIndexChange })
+
+      expect(onIndexChange.mock.calls).toEqual([
+        [editor.children[1], 1],
+        [editor.children[2], 2],
+      ])
+    })
   })
 
   describe('removing and inserting nodes', () => {
@@ -611,6 +683,34 @@ describe('getChunkTreeForNode', () => {
       const chunkTree = reconcileEditor(editor)
       expect(getTreeShape(chunkTree)).toEqual(['0', ['x', 'y'], '2'])
     })
+
+    it('calls onIndexChange for nodes until insertions equal removals', () => {
+      const editor = createEditorWithShape([
+        'a',
+        // Insert 2 here
+        'b',
+        'c',
+        'd', // Remove
+        'e',
+        'f',
+        'g', // Remove
+        'h',
+      ])
+
+      Transforms.removeNodes(editor, { at: [6] })
+      Transforms.removeNodes(editor, { at: [3] })
+      Transforms.insertNodes(editor, blocks(2), { at: [1] })
+
+      const onIndexChange = jest.fn()
+      reconcileEditor(editor, { onIndexChange })
+
+      expect(onIndexChange.mock.calls).toEqual([
+        [editor.children[3], 3],
+        [editor.children[4], 4],
+        [editor.children[5], 5],
+        [editor.children[6], 6],
+      ])
+    })
   })
 
   describe('updating nodes', () => {
@@ -638,6 +738,20 @@ describe('getChunkTreeForNode', () => {
       expect(chunkTree.modifiedChunks).toEqual(
         new Set([outerChunk, innerChunk])
       )
+    })
+
+    it('calls onUpdate for updated Slate nodes', () => {
+      const editor = createEditorWithShape(['0', '1', '2', '3'])
+      Transforms.setNodes(editor, { updated: true } as any, { at: [1] })
+      Transforms.setNodes(editor, { updated: true } as any, { at: [2] })
+
+      const onUpdate = jest.fn()
+      reconcileEditor(editor, { onUpdate })
+
+      expect(onUpdate.mock.calls).toEqual([
+        [editor.children[1], 1],
+        [editor.children[2], 2],
+      ])
     })
   })
 
