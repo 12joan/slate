@@ -1,4 +1,11 @@
-import { Descendant, Element, Node, Transforms, createEditor } from 'slate'
+import {
+  Descendant,
+  Editor,
+  Element,
+  Node,
+  Transforms,
+  createEditor,
+} from 'slate'
 import { Key } from 'slate-dom'
 import { ReactEditor, withReact } from '../src'
 import {
@@ -90,8 +97,13 @@ const getChildrenAndTreeForShape = (
   return { children, chunkTree }
 }
 
+const withChunking = (editor: ReactEditor) => {
+  editor.getChunkSize = node => (Editor.isEditor(node) ? 3 : null)
+  return editor
+}
+
 const createEditorWithShape = (treeShape: TreeShape[]) => {
-  const editor = withReact(createEditor())
+  const editor = withChunking(withReact(createEditor()))
   const { children, chunkTree } = getChildrenAndTreeForShape(editor, treeShape)
   editor.children = children
   const key = ReactEditor.findKey(editor, editor)
@@ -118,7 +130,7 @@ const createPRNG = (seed: number) => {
 describe('getChunkTreeForNode', () => {
   describe('chunking initial value', () => {
     const getShapeForInitialCount = (count: number) => {
-      const editor = withReact(createEditor())
+      const editor = withChunking(withReact(createEditor()))
       editor.children = blocks(count)
       const chunkTree = reconcileEditor(editor)
       return getTreeShape(chunkTree)
@@ -203,7 +215,7 @@ describe('getChunkTreeForNode', () => {
     })
 
     it('calls onInsert for initial children', () => {
-      const editor = withReact(createEditor())
+      const editor = withChunking(withReact(createEditor()))
       editor.children = blocks(3)
 
       const onInsert = jest.fn()
@@ -755,6 +767,52 @@ describe('getChunkTreeForNode', () => {
     })
   })
 
+  describe('moving nodes', () => {
+    it('moves a node down', () => {
+      const editor = createEditorWithShape([['0'], ['1'], ['2'], ['3'], ['4']])
+
+      // Move 1 to after 3
+      Transforms.moveNodes(editor, { at: [1], to: [3] })
+
+      const onInsert = jest.fn()
+      const onIndexChange = jest.fn()
+      const chunkTree = reconcileEditor(editor, { onInsert, onIndexChange })
+
+      expect(getTreeShape(chunkTree)).toEqual([['0'], ['2'], ['3', '1'], ['4']])
+
+      expect(onInsert.mock.calls).toEqual([[editor.children[3], 3]])
+
+      expect(onIndexChange.mock.calls).toEqual([
+        [editor.children[1], 1],
+        [editor.children[2], 2],
+      ])
+
+      expect(chunkTree.movedNodeKeys.size).toBe(0)
+    })
+
+    it('moves a node up', () => {
+      const editor = createEditorWithShape([['0'], ['1'], ['2'], ['3'], ['4']])
+
+      // Move 3 to after 0
+      Transforms.moveNodes(editor, { at: [3], to: [1] })
+
+      const onInsert = jest.fn()
+      const onIndexChange = jest.fn()
+      const chunkTree = reconcileEditor(editor, { onInsert, onIndexChange })
+
+      expect(getTreeShape(chunkTree)).toEqual([['0', '3'], ['1'], ['2'], ['4']])
+
+      expect(onInsert.mock.calls).toEqual([[editor.children[1], 1]])
+
+      expect(onIndexChange.mock.calls).toEqual([
+        [editor.children[2], 2],
+        [editor.children[3], 3],
+      ])
+
+      expect(chunkTree.movedNodeKeys.size).toBe(0)
+    })
+  })
+
   describe('random testing', () => {
     it('remains correct after random operations', () => {
       // Hard code a value here to reproduce a test failure
@@ -770,7 +828,7 @@ describe('getChunkTreeForNode', () => {
         while (performance.now() < endTime) {
           iteration++
 
-          const editor = withReact(createEditor())
+          const editor = withChunking(withReact(createEditor()))
 
           const randomPosition = (includeEnd: boolean) =>
             Math.floor(

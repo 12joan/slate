@@ -45,15 +45,19 @@ export const reconcileChildren = (
   // children array to determine whether nodes have been inserted, removed or
   // updated.
   while ((treeLeaf = chunkTreeHelper.readLeaf())) {
-    // Check where the tree node appears in the children array. Nodes are
-    // removed from the chunk tree on move_node, so the only way for lookAhead
-    // to be greater than 0 is if nodes have been inserted in the children array
-    // prior to the tree node.
-    // TODO: Use movedNodeKeys
+    // Check where the tree node appears in the children array. In the most
+    // common case (where no insertions or removals have occurred), this will be
+    // 0. If the node has been removed, this will be -1. If new nodes have been
+    // inserted before the node, or if the node has been moved to a later
+    // position in the same children array, this will be a positive number.
     const lookAhead = childrenHelper.lookAhead(treeLeaf.node, treeLeaf.key)
 
-    // If the tree leaf is not present in children, remove it
-    if (lookAhead === -1) {
+    // If the node was moved, we want to remove it and insert it later, rather
+    // then re-inserting all intermediate nodes before it.
+    const wasMoved = lookAhead > 0 && chunkTree.movedNodeKeys.has(treeLeaf.key)
+
+    // If the tree leaf was moved or removed, remove it
+    if (lookAhead === -1 || wasMoved) {
       chunkTreeHelper.remove()
       insertionsMinusRemovals--
       continue

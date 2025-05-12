@@ -9,11 +9,14 @@ export interface ChunkTree {
    * The keys of any Slate nodes that have been moved using move_node since the
    * last render
    *
-   * TODO: Update this from editor.apply in withReact
-   *
    * Detecting when a node has been moved to a different position in the
-   * children array is inefficient when reconciling the chunk tree. This set
-   * makes it easier to handle moved nodes correctly.
+   * children array is impossible to do efficiently while reconciling the chunk
+   * tree. This interferes with the reconciliation logic since it is treated as
+   * if the intermediate nodes were inserted and removed, causing them to be
+   * re-chunked unnecessarily.
+   *
+   * This set is used to detect when a node has been moved so that this case
+   * can be handled correctly and efficiently.
    */
   movedNodeKeys: Set<Key>
 
