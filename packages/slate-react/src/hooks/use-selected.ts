@@ -29,5 +29,9 @@ export const useSelected = (): boolean => {
   )
 
   // eslint-disable-next-line react-hooks/rules-of-hooks
-  return useSlateSelector(selector, undefined, { deferred: true })
+  return useSlateSelector(selector, undefined, {
+    // Defer the selector until after `Editable` has rendered so that the path
+    // will be accurate.
+    deferred: true,
+  })
 }
