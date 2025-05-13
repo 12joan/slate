@@ -20,6 +20,19 @@ const clearRenders = () =>
     }
   })
 
+const initialValue = () => [
+  {
+    id: '0',
+    children: [
+      { id: '0.0', children: [{ text: '' }] },
+      { id: '0.1', children: [{ text: '' }] },
+      { id: '0.2', children: [{ text: '' }] },
+    ],
+  },
+  { id: '1', children: [{ text: '' }] },
+  { id: '2', children: [{ text: '' }] },
+]
+
 describe('useSelected', () => {
   beforeEach(() => {
     editor = withReact(createEditor())
@@ -46,21 +59,8 @@ describe('useSelected', () => {
       return <div {...attributes}>{children}</div>
     }
 
-    const initialValue = [
-      {
-        id: '0',
-        children: [
-          { id: '0.0', children: [{ text: '' }] },
-          { id: '0.1', children: [{ text: '' }] },
-          { id: '0.2', children: [{ text: '' }] },
-        ],
-      },
-      { id: '1', children: [{ text: '' }] },
-      { id: '2', children: [{ text: '' }] },
-    ]
-
     render(
-      <Slate editor={editor} initialValue={initialValue}>
+      <Slate editor={editor} initialValue={initialValue()}>
         <Editable renderElement={renderElement} />
       </Slate>
     )
