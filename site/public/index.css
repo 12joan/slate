@@ -109,6 +109,8 @@ details > summary {
   top: 0;
   z-index: 1;
   border-bottom: 1px solid lightgrey;
+  max-height: 50vh;
+  overflow-y: auto;
 }
 
 .performance-controls > * {

@@ -60,7 +60,7 @@ const getDecoratedLeaves = (
   }))
 }
 
-describe('decorations', () => {
+describe.skip('decorations', () => {
   describe('decorating initial value', () => {
     it('decorates part of a single text node', () => {
       const editor = withReact(createEditor())

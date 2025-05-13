@@ -13,10 +13,10 @@ import ElementComponent from '../components/element'
 import TextComponent from '../components/text'
 import { ReactEditor } from '../plugin/react-editor'
 import { IS_NODE_MAP_DIRTY, NODE_TO_INDEX, NODE_TO_PARENT } from 'slate-dom'
-import { SelectedContext } from './use-selected'
 import { useSlateStatic } from './use-slate-static'
 import { getChunkTreeForNode } from '../chunking'
 import ChunkTree from '../components/chunk-tree'
+import { ElementContext } from './use-element'
 
 /**
  * Children.
@@ -65,7 +65,7 @@ const useChildren = (props: {
       const key = cachedKey ?? ReactEditor.findKey(editor, n)
 
       return (
-        <SelectedContext.Provider key={`provider-${key.id}`} value={false}>
+        <ElementContext.Provider key={`provider-${key.id}`} value={n}>
           <ElementComponent
             decorations={[]}
             element={n}
@@ -76,7 +76,7 @@ const useChildren = (props: {
             renderLeaf={renderLeaf}
             renderText={renderText}
           />
-        </SelectedContext.Provider>
+        </ElementContext.Provider>
       )
     },
     [

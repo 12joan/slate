@@ -13,6 +13,7 @@ import {
   RenderChunkProps,
   Slate,
   withReact,
+  useSelected,
 } from 'slate-react'
 
 import { HeadingElement, ParagraphElement } from './custom-types.d'
@@ -31,6 +32,7 @@ interface Config {
   chunkDivs: boolean
   chunkOutlines: boolean
   contentVisibilityMode: 'none' | 'element' | 'chunk'
+  showSelectedHeadings: boolean
 }
 
 const blocksOptions = [
@@ -75,6 +77,7 @@ const initialConfig: Config = {
     ['none', 'element', 'chunk'],
     'chunk'
   ),
+  showSelectedHeadings: parseBoolean('selected_headings', false),
 }
 
 const setSearchParams = (config: Config) => {
@@ -159,9 +162,10 @@ const HugeDocumentExample = () => {
       <Element
         {...props}
         contentVisibility={config.contentVisibilityMode === 'element'}
+        showSelectedHeadings={config.showSelectedHeadings}
       />
     ),
-    [config.contentVisibilityMode]
+    [config.contentVisibilityMode, config.showSelectedHeadings]
   )
 
   const renderChunk = useCallback(
@@ -223,12 +227,29 @@ const Chunk = ({
   )
 }
 
+const Heading = React.forwardRef<
+  HTMLHeadingElement,
+  React.ComponentProps<'h1'> & { showSelectedHeadings: boolean }
+>(({ style: styleProp, showSelectedHeadings = false, ...props }, ref) => {
+  // Fine since the editor is remounted if the config changes
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const selected = showSelectedHeadings ? useSelected() : false
+  const style = { ...styleProp, color: selected ? 'green' : undefined }
+  return <h1 ref={ref} {...props} aria-selected={selected} style={style} />
+})
+
+const Paragraph = 'p'
+
 const Element = ({
   attributes,
   children,
   element,
   contentVisibility,
-}: RenderElementProps & { contentVisibility: boolean }) => {
+  showSelectedHeadings,
+}: RenderElementProps & {
+  contentVisibility: boolean
+  showSelectedHeadings: boolean
+}) => {
   const style: CSSProperties = {
     contentVisibility: contentVisibility ? 'auto' : undefined,
   }
@@ -236,15 +257,19 @@ const Element = ({
   switch (element.type) {
     case 'heading-one':
       return (
-        <h1 {...attributes} style={style}>
+        <Heading
+          {...attributes}
+          style={style}
+          showSelectedHeadings={showSelectedHeadings}
+        >
           {children}
-        </h1>
+        </Heading>
       )
     default:
       return (
-        <p {...attributes} style={style}>
+        <Paragraph {...attributes} style={style}>
           {children}
-        </p>
+        </Paragraph>
       )
   }
 }
@@ -421,7 +446,7 @@ const PerformanceControls = ({
 
         <p>
           <label>
-            <code>content-visibility: auto</code> on:{' '}
+            Set <code>content-visibility: auto</code> on:{' '}
             <select
               value={config.contentVisibilityMode}
               onChange={event =>
@@ -436,6 +461,21 @@ const PerformanceControls = ({
                 <option value="chunk">Lowest chunks</option>
               )}
             </select>
+          </label>
+        </p>
+
+        <p>
+          <label>
+            <input
+              type="checkbox"
+              checked={config.showSelectedHeadings}
+              onChange={event =>
+                setConfig({
+                  showSelectedHeadings: event.target.checked,
+                })
+              }
+            />{' '}
+            Call <code>useSelected</code> in each heading
           </label>
         </p>
       </details>

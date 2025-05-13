@@ -77,7 +77,7 @@ import {
 import { RestoreDOM } from './restore-dom/restore-dom'
 import { AndroidInputManager } from '../hooks/android-input-manager/android-input-manager'
 import { ComposingContext } from '../hooks/use-composing'
-import { useSlateSelector } from '../hooks/use-slate-selector'
+import { useFlushDeferredSelectorsOnRender } from '../hooks/use-slate-selector'
 
 type DeferredOperation = () => void
 
@@ -1013,6 +1013,8 @@ export const Editable = forwardRef(
         EDITOR_TO_PENDING_INSERTION_MARKS.delete(editor)
       })
     })
+
+    useFlushDeferredSelectorsOnRender()
 
     return (
       <ReadOnlyContext.Provider value={readOnly}>
