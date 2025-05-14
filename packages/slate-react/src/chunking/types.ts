@@ -44,6 +44,7 @@ export interface ChunkLeaf {
   type: 'leaf'
   key: Key
   node: Descendant
+  index: number
 }
 
 export type ChunkAncestor = ChunkTree | Chunk

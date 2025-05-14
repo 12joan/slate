@@ -95,16 +95,13 @@ export class ChildrenHelper {
   /**
    * Convert an array of Slate nodes to an array of chunk leaves, each
    * containing the node and its key
-   *
-   * @param startIndex Since keys are cached using the index of each Slate node
-   * in the children array, the index of the first passed node is required to
-   * access the cached keys.
    */
   public toChunkLeaves(nodes: Descendant[], startIndex: number): ChunkLeaf[] {
     return nodes.map((node, i) => ({
       type: 'leaf',
       node,
       key: this.findKey(node, startIndex + i),
+      index: startIndex + i,
     }))
   }
 

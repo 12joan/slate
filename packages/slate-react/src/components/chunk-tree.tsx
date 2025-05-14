@@ -13,7 +13,7 @@ const defaultRenderChunk = ({ children }: RenderChunkProps) => children
 const ChunkAncestor = <C extends TChunkAncestor>(props: {
   root: TChunkTree
   ancestor: C
-  renderElement: (node: Element, key: Key) => JSX.Element
+  renderElement: (node: Element, index: number, key: Key) => JSX.Element
   renderChunk?: (props: RenderChunkProps) => JSX.Element
 }) => {
   const {
@@ -47,7 +47,7 @@ const ChunkAncestor = <C extends TChunkAncestor>(props: {
     // Only blocks containing no inlines are chunked
     const element = chunkNode.node as Element
 
-    return renderElement(element, chunkNode.key)
+    return renderElement(element, chunkNode.index, chunkNode.key)
   })
 }
 

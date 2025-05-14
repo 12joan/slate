@@ -1,6 +1,6 @@
-import React, { useCallback } from 'react'
+import React, { useCallback, useRef } from 'react'
 import { Ancestor, Editor, Element, DecoratedRange, Text } from 'slate'
-import { Key } from 'slate-dom'
+import { Key, isElementDecorationsEqual } from 'slate-dom'
 import {
   RenderChunkProps,
   RenderElementProps,
@@ -12,7 +12,12 @@ import {
 import ElementComponent from '../components/element'
 import TextComponent from '../components/text'
 import { ReactEditor } from '../plugin/react-editor'
-import { IS_NODE_MAP_DIRTY, NODE_TO_INDEX, NODE_TO_PARENT } from 'slate-dom'
+import {
+  IS_NODE_MAP_DIRTY,
+  NODE_TO_INDEX,
+  NODE_TO_PARENT,
+  splitDecorationsByChild,
+} from 'slate-dom'
 import { useSlateStatic } from './use-slate-static'
 import { getChunkTreeForNode } from '../chunking'
 import ChunkTree from '../components/chunk-tree'
@@ -40,19 +45,24 @@ const useChildren = (props: {
     renderText,
     renderLeaf,
   } = props
-  // const decorate = useDecorate()
   const editor = useSlateStatic()
   IS_NODE_MAP_DIRTY.set(editor as ReactEditor, false)
-  // const path = ReactEditor.findPath(editor, node)
+
   const isEditor = Editor.isEditor(node)
   const isBlock = !isEditor && Element.isElement(node) && !editor.isInline(node)
   const isLeafBlock = isBlock && Editor.hasInlines(editor, node)
   const chunkSize = isLeafBlock ? null : editor.getChunkSize(node)
   const chunking = !!chunkSize
 
+  const { decorationsByChild, childrenToRedecorate } = useDecorationsByChild(
+    editor,
+    node,
+    decorations
+  )
+
   // Update the index and parent of each child.
   // PERF: If chunking is enabled, this is done while traversing the chunk tree
-  // to eliminate unnecessary weak map operations.
+  // instead to eliminate unnecessary weak map operations.
   if (!chunking) {
     node.children.forEach((n, i) => {
       NODE_TO_INDEX.set(n, i)
@@ -61,13 +71,13 @@ const useChildren = (props: {
   }
 
   const renderElementComponent = useCallback(
-    (n: Element, cachedKey?: Key) => {
+    (n: Element, i: number, cachedKey?: Key) => {
       const key = cachedKey ?? ReactEditor.findKey(editor, n)
 
       return (
         <ElementContext.Provider key={`provider-${key.id}`} value={n}>
           <ElementComponent
-            decorations={[]}
+            decorations={decorationsByChild[i]}
             element={n}
             key={key.id}
             renderElement={renderElement}
@@ -81,6 +91,7 @@ const useChildren = (props: {
     },
     [
       editor,
+      decorationsByChild,
       renderElement,
       renderChunk,
       renderPlaceholder,
@@ -94,7 +105,7 @@ const useChildren = (props: {
 
     return (
       <TextComponent
-        decorations={[]}
+        decorations={decorationsByChild[i]}
         key={key.id}
         isLast={i === node.children.length - 1}
         parent={node}
@@ -108,27 +119,14 @@ const useChildren = (props: {
 
   if (!chunking) {
     return node.children.map((n, i) =>
-      Text.isText(n) ? renderTextComponent(n, i) : renderElementComponent(n)
+      Text.isText(n) ? renderTextComponent(n, i) : renderElementComponent(n, i)
     )
   }
-
-  // const p = path.concat(i)
-  // const key = cachedKey ?? ReactEditor.findKey(editor, n)
-  // const range = Editor.range(editor, p)
-  // const sel = selection && Range.intersection(range, selection)
-  // const ds = decorate([n, p])
-
-  // for (const dec of decorations) {
-  //   const d = Range.intersection(dec, range)
-
-  //   if (d) {
-  //     ds.push(d)
-  //   }
-  // }
 
   const chunkTree = getChunkTreeForNode(editor, node, {
     reconcile: {
       chunkSize,
+      rerenderChildren: childrenToRedecorate,
       onInsert: (n, i) => {
         NODE_TO_INDEX.set(n, i)
         NODE_TO_PARENT.set(n, node)
@@ -151,6 +149,42 @@ const useChildren = (props: {
       renderChunk={renderChunk}
     />
   )
+}
+
+const useDecorationsByChild = (
+  editor: Editor,
+  node: Ancestor,
+  decorations: DecoratedRange[]
+) => {
+  const decorationsByChild = splitDecorationsByChild(editor, node, decorations)
+
+  // The value we return is a mutable array of `DecoratedRange[]` arrays. This
+  // lets us avoid passing an immutable array of decorations for each child into
+  // `ChunkTree` using props. Each `DecoratedRange[]` is only updated if the
+  // decorations at that index have changed, which speeds up the equality check
+  // for the `decorations` prop in the memoized `Element` and `Text` components.
+  const mutableDecorationsByChild = useRef(decorationsByChild).current
+
+  // Track the list of child indices whose decorations have changed, so that we
+  // can tell the chunk tree to re-render these children.
+  const childrenToRedecorate: number[] = []
+
+  // Resize the mutable array to match the latest result
+  mutableDecorationsByChild.length = decorationsByChild.length
+
+  for (let i = 0; i < decorationsByChild.length; i++) {
+    const decorations = decorationsByChild[i]
+
+    const previousDecorations: DecoratedRange[] | null =
+      mutableDecorationsByChild[i] ?? null
+
+    if (!isElementDecorationsEqual(previousDecorations, decorations)) {
+      mutableDecorationsByChild[i] = decorations
+      childrenToRedecorate.push(i)
+    }
+  }
+
+  return { decorationsByChild: mutableDecorationsByChild, childrenToRedecorate }
 }
 
 export default useChildren

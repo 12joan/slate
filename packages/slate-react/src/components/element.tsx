@@ -21,6 +21,11 @@ import {
 } from './editable'
 
 import Text from './text'
+import { useDecorations } from '../hooks/use-decorations'
+
+const defaultRenderElement = (props: RenderElementProps) => (
+  <DefaultElement {...props} />
+)
 
 /**
  * Element.
@@ -36,9 +41,9 @@ const Element = (props: {
   renderLeaf?: (props: RenderLeafProps) => JSX.Element
 }) => {
   const {
-    decorations,
+    decorations: parentDecorations,
     element,
-    renderElement = (p: RenderElementProps) => <DefaultElement {...p} />,
+    renderElement = defaultRenderElement,
     renderChunk,
     renderPlaceholder,
     renderLeaf,
@@ -47,6 +52,7 @@ const Element = (props: {
   const editor = useSlateStatic()
   const readOnly = useReadOnly()
   const isInline = editor.isInline(element)
+  const decorations = useDecorations(element, parentDecorations)
   const key = ReactEditor.findKey(editor, element)
   const ref = useCallback(
     (ref: HTMLElement | null) => {

@@ -27,7 +27,7 @@ import {
 } from 'slate'
 import { useAndroidInputManager } from '../hooks/android-input-manager/use-android-input-manager'
 import useChildren from '../hooks/use-children'
-import { DecorateContext } from '../hooks/use-decorate'
+import { DecorateContext, useDecorateContext } from '../hooks/use-decorations'
 import { useIsomorphicLayoutEffect } from '../hooks/use-isomorphic-layout-effect'
 import { ReadOnlyContext } from '../hooks/use-read-only'
 import { useSlate } from '../hooks/use-slate'
@@ -935,6 +935,7 @@ export const Editable = forwardRef(
     }, [scheduleOnDOMSelectionChange, state])
 
     const decorations = decorate([editor, []])
+    const decorateContext = useDecorateContext(decorate)
 
     const showPlaceholder =
       placeholder &&
@@ -1019,7 +1020,7 @@ export const Editable = forwardRef(
     return (
       <ReadOnlyContext.Provider value={readOnly}>
         <ComposingContext.Provider value={isComposing}>
-          <DecorateContext.Provider value={decorate}>
+          <DecorateContext.Provider value={decorateContext}>
             <RestoreDOM node={ref} receivedUserInput={receivedUserInput}>
               <Component
                 role={readOnly ? undefined : 'textbox'}

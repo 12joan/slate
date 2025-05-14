@@ -7,6 +7,7 @@ export interface ReconcileOptions extends ChunkTreeHelperOptions {
   chunkTree: ChunkTree
   children: Descendant[]
   chunkSize: number
+  rerenderChildren?: number[]
   onInsert?: (node: Descendant, index: number) => void
   onUpdate?: (node: Descendant, index: number) => void
   onIndexChange?: (node: Descendant, index: number) => void
@@ -23,6 +24,7 @@ export const reconcileChildren = (
     chunkTree,
     children,
     chunkSize,
+    rerenderChildren = [],
     onInsert,
     onUpdate,
     onIndexChange,
@@ -98,6 +100,13 @@ export const reconcileChildren = (
     // current node's index must have changed
     if (insertionsMinusRemovals !== 0) {
       onIndexChange?.(matchingChild, matchingChildIndex)
+      treeLeaf.index = matchingChildIndex
+    }
+
+    // Manually invalidate chunks containing specific children that we want to
+    // re-render
+    if (rerenderChildren.includes(matchingChildIndex)) {
+      chunkTreeHelper.invalidateChunk()
     }
   }
 

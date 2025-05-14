@@ -88,6 +88,10 @@ const setSearchParams = (config: Config) => {
     searchParams.set('chunk_divs', config.chunkDivs ? 'true' : 'false')
     searchParams.set('chunk_outlines', config.chunkOutlines ? 'true' : 'false')
     searchParams.set('content_visibility', config.contentVisibilityMode)
+    searchParams.set(
+      'selected_headings',
+      config.showSelectedHeadings ? 'true' : 'false'
+    )
     history.replaceState({}, '', `?${searchParams.toString()}`)
   }
 }

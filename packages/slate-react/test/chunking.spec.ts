@@ -76,12 +76,14 @@ const getChildrenAndTreeForShape = (
     }
 
     const node = block(ts)
+    const index = children.length
     children.push(node)
 
     return {
       type: 'leaf',
       key: ReactEditor.findKey(editor, node),
       node,
+      index,
     }
   }
 
@@ -225,6 +227,21 @@ describe('getChunkTreeForNode', () => {
         [editor.children[0], 0],
         [editor.children[1], 1],
         [editor.children[2], 2],
+      ])
+    })
+
+    it('sets the index of each chunk leaf', () => {
+      const editor = withChunking(withReact(createEditor()))
+      editor.children = blocks(9)
+
+      const chunkTree = reconcileEditor(editor)
+      const chunks = chunkTree.children as Chunk[]
+      const leaves = chunks.map(chunk => chunk.children)
+
+      expect(leaves).toMatchObject([
+        [{ index: 0 }, { index: 1 }, { index: 2 }],
+        [{ index: 3 }, { index: 4 }, { index: 5 }],
+        [{ index: 6 }, { index: 7 }, { index: 8 }],
       ])
     })
   })
@@ -458,6 +475,16 @@ describe('getChunkTreeForNode', () => {
           [editor.children[4], 4],
         ])
       })
+
+      it('sets the index of inserted leaves', () => {
+        const editor = createEditorWithShape(['a', 'b', 'c'])
+        Transforms.insertNodes(editor, blocks(2), { at: [3] })
+
+        const chunkTree = reconcileEditor(editor)
+        const chunk = chunkTree.children[3] as Chunk
+
+        expect(chunk.children).toMatchObject([{ index: 3 }, { index: 4 }])
+      })
     })
 
     describe('at start of editor', () => {
@@ -532,6 +559,16 @@ describe('getChunkTreeForNode', () => {
             [editor.children[3], 3],
             [editor.children[4], 4],
           ])
+        })
+
+        it('updates the index of subsequent leaves', () => {
+          const editor = createEditorWithShape(['a', 'b', 'c'])
+          Transforms.insertNodes(editor, blocks(3), { at: [1] })
+
+          const chunkTree = reconcileEditor(editor)
+          const subsequentLeaves = chunkTree.children.slice(2)
+
+          expect(subsequentLeaves).toMatchObject([{ index: 4 }, { index: 5 }])
         })
       })
 
@@ -650,6 +687,16 @@ describe('getChunkTreeForNode', () => {
         [editor.children[1], 1],
         [editor.children[2], 2],
       ])
+    })
+
+    it('updates the index of subsequent leaves', () => {
+      const editor = createEditorWithShape(['a', 'b', 'c', 'd'])
+      Transforms.removeNodes(editor, { at: [1] })
+
+      const chunkTree = reconcileEditor(editor)
+      const subsequentLeaves = chunkTree.children.slice(1)
+
+      expect(subsequentLeaves).toMatchObject([{ index: 1 }, { index: 2 }])
     })
   })
 
@@ -810,6 +857,28 @@ describe('getChunkTreeForNode', () => {
       ])
 
       expect(chunkTree.movedNodeKeys.size).toBe(0)
+    })
+  })
+
+  describe('manual rerendering', () => {
+    it('invalidates specific child indices', () => {
+      const editor = createEditorWithShape([
+        ['0'],
+        ['1', ['2'], '3'],
+        ['4'],
+        '5',
+      ])
+
+      reconcileEditor(editor)
+
+      const chunkTree = reconcileEditor(editor, { rerenderChildren: [2, 4] })
+      const twoOuterChunk = chunkTree.children[1] as Chunk
+      const twoInnerChunk = twoOuterChunk.children[1]
+      const fourChunk = chunkTree.children[2]
+
+      expect(chunkTree.modifiedChunks).toEqual(
+        new Set([twoOuterChunk, twoInnerChunk, fourChunk])
+      )
     })
   })
 
